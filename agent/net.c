@@ -46,41 +46,6 @@
 
 #define NET_WAIT_TIME           300      /* 300ms in usec */
 
-#ifdef EM_DISSECT_MSG
-
-void net_show_msg(char * buf, int size, int send)
-{
-	int i;
-
-	EMDBG("Dissecting message, size=%d", size);
-
-	if(send) {
-		printf("-------------------------------------------------->\n");
-	} else {
-		printf("<--------------------------------------------------\n");
-	}
-
-	printf("    00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f\n");
-
-	for(i = 0; i < size; i++) {
-		if(i % 16 == 0) {
-			printf("\n%03x ", i);
-		}
-
-		printf("%02x ", (unsigned char)buf[i]);
-	}
-
-	if(send) {
-		printf(
-		"\n-------------------------------------------------->\n");
-	} else {
-		printf(
-		"\n<--------------------------------------------------\n");
-	}
-}
-
-#endif /* EM_DISSECT_MSG */
-
 /******************************************************************************
  * Network procedures.                                                        *
  ******************************************************************************/
@@ -174,6 +139,7 @@ int net_not_connected(struct net_context * net) {
  * Returns a negative number on error.
  */
 int net_connect_to_controller(struct net_context * net) {
+	int flags  = 0;
 	int status = 0;
 
 	struct sockaddr_in srvaddr = {0};
@@ -181,6 +147,18 @@ int net_connect_to_controller(struct net_context * net) {
 
 	if(net->sockfd < 0) {
 		status = socket(AF_INET, SOCK_STREAM, 0);
+
+		flags = fcntl(status, F_GETFL, 0);
+
+		if(flags >= 0) {
+			flags = flags | O_NONBLOCK;
+
+			if(fcntl(status, F_SETFL, flags)) {
+				EMLOG("Cannot mark socket as NONBLOCK!");
+			}
+		} else {
+			EMLOG("Cannot mark socket as NONBLOCK!");
+		}
 	}
 
 	if(status < 0) {
@@ -213,12 +191,24 @@ int net_connect_to_controller(struct net_context * net) {
 		ctrli->h_length);
 	srvaddr.sin_port = htons(net->port);
 
+again:
+	if(net->stop) {
+		return -1;
+	}
+
 	status = connect(
 		net->sockfd,
 		(struct sockaddr *)&srvaddr,
 		sizeof(struct sockaddr));
 
 	if(status < 0) {
+		/* Since it's a non-blocking call, in case the connection is
+		 * in progress we just try again */
+		if(errno == EALREADY) {
+			usleep(1000000);
+			goto again;
+		}
+
 		EMDBG("Error while connecting to %s, error=%d",
 			net->addr,
 			status);
@@ -236,10 +226,6 @@ int net_recv(struct net_context * context, char * buf, unsigned int size) {
 
 /* Send data. */
 int net_send(struct net_context * context, char * buf, unsigned int size) {
-#ifdef EM_DISSECT_MSG
-	net_show_msg(buf, size, 1);
-#endif /* EM_DISSECT_MSG */
-
 	/* NOTE:
 	 * Since sending on a dead socket can cause a signal to be issued to the
 	 * application (SIGPIPE), we don't want that the host get disturbed by
@@ -555,10 +541,6 @@ int net_process_message(struct net_context * net, char * msg, unsigned int size)
 {
 	ep_msg_type mt = epp_msg_type(msg, size);
 
-#ifdef EM_DISSECT_MSG
-	net_show_msg(msg, size, 0);
-#endif /* EM_DISSECT_MSG */
-
 	switch(mt) {
 	/* Single events messages. */
 	case EP_TYPE_SINGLE_MSG:
@@ -649,12 +631,8 @@ next:
 		}
 
 		if(bread != EP_HEADER_SIZE) {
-			EMDBG("Read %d bytes, but only %d to process!",
+			EMDBG("Read %d bytes, but only %ld to process!",
 				bread, EP_HEADER_SIZE);
-
-#ifdef EM_DISSECT_MSG
-			net_show_msg(buf, bread, 0);
-#endif /* EM_DISSECT_MSG */
 
 			net_not_connected(net);
 			goto next;
@@ -691,10 +669,6 @@ next:
 		if(bread != mlen) {
 			EMDBG("Read %d bytes, but only %d to process!",
 				bread, mlen);
-
-#ifdef EM_DISSECT_MSG
-			net_show_msg(buf, bread, 0);
-#endif /* EM_DISSECT_MSG */
 
 			net_not_connected(net);
 			goto next;

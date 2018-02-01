@@ -28,9 +28,6 @@ clean:
 debug:
 	cd agent && make debug
 
-verbose:
-	cd agent && make verbose
-
 install:
 	cd agent && make install
 

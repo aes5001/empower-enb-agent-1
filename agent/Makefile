@@ -45,14 +45,6 @@ debug:
 		$(AGENTP)/core.c
 	$(CC) -shared -o libemagent.so *.o
 
-verbose:
-	$(CC) $(INCLUDES) -c -fpic -DEM_DEBUG -DEM_DISSECT_MSG          \
-		$(AGENTP)/net.c                                         \
-		$(AGENTP)/sched.c                                       \
-		$(AGENTP)/triggers.c                                    \
-		$(AGENTP)/core.c
-	$(CC) -shared -o libemagent.so *.o
-
 install:
 	cp ./libemagent.so $(INSTDIR)
 	mkdir -p $(INCLDIR)
