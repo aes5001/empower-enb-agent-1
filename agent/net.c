@@ -234,6 +234,15 @@ int net_send(struct net_context * context, char * buf, unsigned int size) {
 	return send(context->sockfd, buf, size, MSG_DONTWAIT | MSG_NOSIGNAL);
 }
 
+/* Schedule a generic job into the agent scheduler.
+ *
+ * NOTE: 
+ *	Depending on the size argument, different strategies are taken; if this
+ *	value is 0, then args pointer is copied into the job (reference). If 
+ *	size is different than 0 (unsigned force to positive values only), then
+ *	the 'args' parameter is coped into the job arguments field (using size 
+ *	to know the amount of new allocation).
+ */
 int net_sched_job(
 	struct agent * a,
 	unsigned int id,
@@ -252,6 +261,9 @@ int net_sched_job(
 
 	memset(job, 0, sizeof(struct sched_job));
 
+	/* Depending on the size you decide if the given arguments are passed 
+	 * by reference of by copy.
+	 */
 	if(size > 0) {
 		job->args = malloc(sizeof(char) * size);
 
@@ -262,7 +274,9 @@ int net_sched_job(
 		}
 
 		memcpy(job->args, args, sizeof(char) * size);
-	} else {
+	} 
+	/* Size equals to zero perform pointer copy only */
+	else {
 		job->args = args;
 	}
 
@@ -335,6 +349,58 @@ int net_se_ho(struct net_context * net, char * msg, int size)
 	EMDBG("Single message Handover");
 
 	return net_sched_job(a, seq, JOB_TYPE_HO, 1, 0, msg, size);
+}
+
+/* RAN setup */
+int net_se_rans(struct net_context * net, char * msg, int size)
+{
+        uint32_t       seq;
+        struct agent * a = container_of(net, struct agent, net);
+
+        seq = epp_seq(msg, size);
+
+        EMDBG("Single message RAN setup");
+
+        return net_sched_job(a, seq, JOB_TYPE_RAN_SETUP, 1, 0, msg, size);
+}
+
+/* RAN tenant */
+int net_se_rant(struct net_context * net, char * msg, int size)
+{
+        uint32_t       seq;
+        struct agent * a = container_of(net, struct agent, net);
+
+        seq = epp_seq(msg, size);
+
+        EMDBG("Single message RAN tenant");
+
+        return net_sched_job(a, seq, JOB_TYPE_RAN_TENANT, 1, 0, msg, size);
+}
+
+/* RAN user */
+int net_se_ranu(struct net_context * net, char * msg, int size)
+{
+        uint32_t       seq;
+        struct agent * a = container_of(net, struct agent, net);
+
+        seq = epp_seq(msg, size);
+
+        EMDBG("Single message RAN user");
+
+        return net_sched_job(a, seq, JOB_TYPE_RAN_USER, 1, 0, msg, size);
+}
+
+/* RAN scheduler */
+int net_se_ranc(struct net_context * net, char * msg, int size)
+{
+        uint32_t       seq;
+        struct agent * a = container_of(net, struct agent, net);
+
+        seq = epp_seq(msg, size);
+
+        EMDBG("Single message RAN scheduler");
+
+        return net_sched_job(a, seq, JOB_TYPE_RAN_SCHEDULER, 1, 0, msg, size);
 }
 
 int net_te_ue_measure(struct net_context * net, char * msg, int size)
@@ -500,6 +566,30 @@ int net_process_single_event(
 			return net_se_ho(net, msg, size);
 		}
 		break;
+        case EP_ACT_RAN_SETUP:
+                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                        EMDBG("RAN setup request received!");
+                        return net_se_rans(net, msg, size);
+                }
+                break;
+        case EP_ACT_RAN_TENANT:
+                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                        EMDBG("RAN Tenants request received!");
+                        return net_se_rant(net, msg, size);
+                }
+                break;
+        case EP_ACT_RAN_USER:
+                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                        EMDBG("RAN Users request received!");
+                        return net_se_ranu(net, msg, size);
+                }
+                break;
+        case EP_ACT_RAN_SCHED:
+                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                        EMDBG("RAN Schedulers request received!");
+                        return net_se_ranc(net, msg, size);
+                }
+                break;
 	default:
 		EMDBG("Unknown single event, type=%d", s);
 		break;

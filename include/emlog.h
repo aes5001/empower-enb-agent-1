@@ -31,18 +31,18 @@ extern "C"
 #define EMLOG(x, ...)                                                   \
 	printf("emage: "x"\n", ##__VA_ARGS__)
 
-#ifdef EM_DEBUG
+#ifdef EBUG
 
 /* Debugging routine. */
 #define EMDBG(x, ...)                                                   \
 	printf("emage-debug:"x"\n", ##__VA_ARGS__)
 
-#else /* EM_DEBUG */
+#else /* EBUG */
 
 /* Debugging routine. */
 #define EMDBG(x, ...)
 
-#endif /* EM_DEBUG */
+#endif /* EBUG */
 
 #ifdef __cplusplus
 }

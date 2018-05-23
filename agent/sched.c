@@ -214,7 +214,8 @@ int sched_perform_ue_report(struct agent * a, struct sched_job * job)
 	return JOB_CONSUMED;
 }
 
-int sched_perform_hello(struct agent * a, struct sched_job * job) {
+int sched_perform_hello(struct agent * a, struct sched_job * job) 
+{
 	char buf[EM_BUF_SIZE];
 	int blen = 0;
 	int sent = 0;
@@ -225,6 +226,171 @@ int sched_perform_hello(struct agent * a, struct sched_job * job) {
 	ret  = sched_send_msg(a, buf, blen);
 
 	return ret;
+}
+
+int sched_perform_ran_setup(struct agent * a, struct sched_job * job)
+{
+	uint32_t mod = 0;
+	
+	epp_head(job->args, job->size, 0, 0, 0, &mod);
+
+	if (a->ops && a->ops->ran_setup_request) {
+		a->ops->ran_setup_request(mod);
+	}
+
+	return JOB_CONSUMED;
+}
+
+int sched_perform_ran_user(struct agent * a, struct sched_job * job)
+{
+	ep_msg_type     type = 0;
+	ep_act_type     act  = 0;
+	ep_op_type      op   = 0;
+	uint32_t        mod  = 0;
+
+	ep_ran_user_det udet;
+
+	/* If no operations are there, dont perform any other job. */
+	if (!a->ops) {
+		return JOB_CONSUMED;
+	}
+
+	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	act = epp_single_type(job->args, job->size);
+	op  = epp_single_op(job->args, job->size);
+
+	/* Depending on the operation requested, call the correct callback */
+	switch (op) {
+	/* A request */
+	case EP_OPERATION_UNSPECIFIED:
+		if (a->ops->ran_user_request) {
+			epp_single_ran_usr_req(job->args, job->size, &udet.id);
+			a->ops->ran_user_request(mod, udet.id);
+		}
+		break;
+	/* An addition */
+	case EP_OPERATION_ADD:
+		if (a->ops->ran_user_add) {
+			epp_single_ran_usr_add(job->args, job->size, &udet);
+			a->ops->ran_user_add(mod, udet.id, udet.tenant);
+		}
+		break;
+	/* A remove */
+	case EP_OPERATION_REM:
+		if (a->ops->ran_user_rem) {
+			epp_single_ran_usr_rem(job->args, job->size, &udet);
+			a->ops->ran_user_rem(mod, udet.id);
+		}
+		break;
+	}
+
+	return JOB_CONSUMED;
+}
+
+int sched_perform_ran_tenant(struct agent * a, struct sched_job * job)
+{
+	ep_msg_type       type = 0;
+	ep_act_type       act  = 0;
+	ep_op_type        op   = 0;
+	uint32_t          mod  = 0;
+
+	ep_ran_tenant_det tdet;
+
+	/* If no operations are there, dont perform any other job. */
+	if (!a->ops) {
+		return JOB_CONSUMED;
+	}
+
+	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	act = epp_single_type(job->args, job->size);
+	op  = epp_single_op(job->args, job->size);
+
+	/* Depending on the operation requested, call the correct callback */
+	switch (op) {
+		/* A request */
+	case EP_OPERATION_UNSPECIFIED:
+		if (a->ops->ran_tenant_request) {
+			epp_single_ran_ten_req(job->args, job->size, &tdet);
+			a->ops->ran_tenant_request(mod, tdet.id);
+		}
+		break;
+	/* An addition */
+	case EP_OPERATION_ADD:
+		if (a->ops->ran_tenant_add) {
+			epp_single_ran_ten_add(job->args, job->size, &tdet);
+			a->ops->ran_tenant_add(mod, tdet.id, tdet.sched);
+		}
+		break;
+	/* A remove */
+	case EP_OPERATION_REM:
+		if (a->ops->ran_tenant_rem) {
+			epp_single_ran_ten_rem(job->args, job->size, &tdet);
+			a->ops->ran_tenant_rem(mod, tdet.id);
+		}
+		break;
+	}
+
+	return JOB_CONSUMED;
+}
+
+int sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
+{
+	ep_msg_type       type = 0;
+	ep_act_type       act  = 0;
+	ep_op_type        op   = 0;
+	uint32_t          mod  = 0;
+
+	uint32_t          id   = 0;
+	uint64_t          ten  = 0;
+	ep_ran_sparam_det par;
+
+	/* If no operations are there, dont perform any other job. */
+	if (!a->ops) {
+		return JOB_CONSUMED;
+	}
+
+	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	act = epp_single_type(job->args, job->size);
+	op  = epp_single_op(job->args, job->size);
+
+	/* Depending on the operation requested, call the correct callback */
+	switch (op) {
+	/* A request of parameter status */
+	case EP_OPERATION_UNSPECIFIED:
+		if (a->ops->ran_sched_get_parameter) {
+			epp_single_ran_sch_req(
+				job->args, job->size, &id, &ten, &par);
+
+			a->ops->ran_sched_get_parameter(
+				mod, 
+				id, 
+				ten == 0 ? 
+					EP_RAN_SCHED_TENANT_TYPE :
+					EP_RAN_SCHED_USER_TYPE,
+				ten,
+				&par);
+		}
+		break;
+	/* A set of parameter status */
+	case EP_OPERATION_SET:
+		if (a->ops->ran_sched_set_parameter) {
+			epp_single_ran_sch_set(
+				job->args, job->size, &id, &ten, &par);
+
+			a->ops->ran_sched_set_parameter(
+				mod,
+				id,
+				ten == 0 ?
+					EP_RAN_SCHED_TENANT_TYPE :
+					EP_RAN_SCHED_USER_TYPE,
+				ten,
+				&par);
+		}
+		break;
+		break;
+	}
+
+	return JOB_CONSUMED;
 }
 
 int sched_release_job(struct sched_job * job)
@@ -319,6 +485,18 @@ int sched_perform_job(
 		break;
 	case JOB_TYPE_HO:
 		status = sched_perform_ho(a, job);
+		break;
+	case JOB_TYPE_RAN_SETUP:
+		status = sched_perform_ran_setup(a, job);
+		break;
+	case JOB_TYPE_RAN_TENANT:
+		status = sched_perform_ran_tenant(a, job);
+		break;
+	case JOB_TYPE_RAN_USER:
+		status = sched_perform_ran_user(a, job);
+		break;
+	case JOB_TYPE_RAN_SCHEDULER:
+		status = sched_perform_ran_scheduler(a, job);
 		break;
 	default:
 		EMDBG("Unknown job cannot be performed, type=%d", job->type);

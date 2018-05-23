@@ -25,7 +25,7 @@ LIBS=-lpthread -lemproto
 INCLUDES=-I../include
 
 all:
-	$(CC) $(INCLUDES) -c -fpic                                      \
+	$(CC) $(INCLUDES) -c -fpic                               \
 		$(AGENTP)/net.c                                         \
 		$(AGENTP)/sched.c                                       \
 		$(AGENTP)/triggers.c                                    \
@@ -38,7 +38,7 @@ clean:
 	rm -f ./*.so
 
 debug:
-	$(CC) $(INCLUDES) -c -fpic -DEM_DEBUG                           \
+	$(CC) $(INCLUDES) -c -fpic -DEBUG                        \
 		$(AGENTP)/net.c                                         \
 		$(AGENTP)/sched.c                                       \
 		$(AGENTP)/triggers.c                                    \
