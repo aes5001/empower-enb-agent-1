@@ -4,8 +4,6 @@
 #ifndef _LINUX_LIST_H
 #define _LINUX_LIST_H
 
-#include <stdio.h>
-
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #endif
