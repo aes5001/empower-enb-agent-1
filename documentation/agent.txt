@@ -1,0 +1,79 @@
+
+	EmPOWER Agent
+
+
+
+The eNB agent for Empower is an utility library containing the logic to exchange
+messages with an Empower Controller in a meaningful way. While the eNB-protocols
+defines how the data is formatted and parsed, it provides no logic of how they
+are handlded.
+
+The Agent provides a first organization for messages exchange, and simplifies 
+the management of such operation by using an intermediate interface with which
+wrappers can operate on.
+
+This interface is the 'agent operations', or 'ops'. When an Agent is started, 
+you are asked to provide an ID (used to identify the agent instance at the 
+controller side), and a pointer to a ops structure, filled with pointers which
+you hopefully implemented to join the agent itself with the logic of the eNB.
+
+                                        eNB wrapper & eNB context
+                                      +------------------+
+       Agent 1                       Agent operations    |
+     +---------+                   +------------------+  |
+     |    /    |                   |                  |  |
+     |   /__   |  interacts with   |                  |  |
+     |     /   |------------------>|                  |  |
+     |    /    |                   |                  |  |
+     +---------+                   |                  |  |
+                                   |                  |  |
+                                   |                  |  |
+                                   |                  |  |
+                                   +------------------+  |
+                                      |                  |
+                                      +------------------+
+
+Agent and the eNB will never directly interacts with each other, but the wrapper
+abstraction layer provides a way to softly perform operations without bound the
+technology to a specific implementation.
+
+Take into account that, by using the agent ID, you can spawn different instances
+inside the same machine, and even application, of agents. Even if this feature
+has been rarely used, there still can be the case of differentiate a group of 
+cells inside an isolated agent context, and you can do it.
+
+     Process 1821
+   +----------------------------------------------------------------+
+   |      Agent 1         Agent 2         Agent 3                   |
+   |    +---------+     +---------+     +---------+                 |
+   |    |         |     |         |     |         |                 |
+   |    |         |     |         |     |         |                 |
+   |    |         |     |         |     |         |       [...]     |
+   |    |         |     |         |     |         |                 |
+   |    +---------+     +---------+     +---------+                 |
+   +----------------------------------------------------------------+
+
+Take in account that a similar setup will potentially needs to feed to the 
+agents different set of 'ops' callback, or the same one if you handle multiple
+instance inside the wrapper implementation.
+
+
+  CONTEXTS WITHIN THE AGENT
+
+Each agent then have a personal set of contexts: one for tasks, one to handle 
+network operations and one for triggers. 
+
+Network context will handle incoming communications from the Controller, and has
+the duty to validate the data and translate it to tasks that will be injected in
+the scheduler context.
+
+Scheduler context handles tasks injected in its queue and consume them. Some 
+tasks can be internal, and not reflected to the wrapper through the 'ops', while
+some others will directly have and effect on the eNB.
+
+The trigger context maintains the state of active triggers (type of events), and
+allows agent users to determine if a particular trigger is still enabled or if
+it has been revoked by the controller.
+
+
+Kewin R.
