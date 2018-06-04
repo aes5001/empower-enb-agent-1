@@ -20,32 +20,39 @@
 #ifndef __EMAGE_LOG_H
 #define __EMAGE_LOG_H
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
-
 #include <stdio.h>
+#include "visibility.h"
 
-/* Log routine for every feedback. */
-#define EMLOG(x, ...)                                                   \
-	printf("emage: "x"\n", ##__VA_ARGS__)
+#define LOG_NAME_SPACE "16"
+
+/* Log routine for out-of-agent context case */
+#define EMCLOG(x, ...) \
+	em_log_message("CORE     > " x, ##__VA_ARGS__)
+
+/* Log routine for every feedback */
+#define EMLOG(a, x, ...) \
+	em_log_message("AGENT[%d] > " x, a->enb_id, ##__VA_ARGS__)
 
 #ifdef EBUG
 
-/* Debugging routine. */
-#define EMDBG(x, ...)                                                   \
-	printf("emage-debug:"x"\n", ##__VA_ARGS__)
+/* Debugging routine; valid only when EBUG symbol is defined  */
+#define EMDBG(a, x, ...) \
+	em_log_message("AGENT[%d] > " x, a->enb_id, ##__VA_ARGS__)
 
 #else /* EBUG */
-
-/* Debugging routine. */
-#define EMDBG(x, ...)
-
+#define EMDBG(id, x, ...)
 #endif /* EBUG */
 
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
+/* Prepare to use logging functionalities */
+INTERNAL int  em_log_init();
+
+/* Releases the logging subsystem and close any existing resource */
+INTERNAL void em_log_release();
+
+/* Log a message with a printf-like style inside a previously initialized file
+ * on he file-system. This procedure should be called after 'log_init', but
+ * eventually fails without generating exceptions if called before.
+ */
+INTERNAL void em_log_message(char * msg, ...);
 
 #endif /* __EMAGE_LOG_H */
