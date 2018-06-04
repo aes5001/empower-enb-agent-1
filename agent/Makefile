@@ -25,12 +25,13 @@ LIBS=-lpthread -lemproto
 INCLUDES=-I../include
 
 all:
-	$(CC) $(INCLUDES) -c -fpic                               \
+	$(CC) $(INCLUDES) -c -fpic -O2 -fvisibility=hidden       \
+		$(AGENTP)/log.c                                         \
 		$(AGENTP)/net.c                                         \
 		$(AGENTP)/sched.c                                       \
 		$(AGENTP)/triggers.c                                    \
 		$(AGENTP)/core.c
-	$(CC) -shared -o libemagent.so *.o
+	$(CC) -shared -fpic -s -o libemagent.so *.o
 
 clean:
 	rm -f ./*.o
@@ -38,20 +39,21 @@ clean:
 	rm -f ./*.so
 
 debug:
-	$(CC) $(INCLUDES) -c -fpic -DEBUG                        \
+	$(CC) $(INCLUDES) -c -fpic -DEBUG -fvisibility=hidden    \
+		$(AGENTP)/log.c                                         \
 		$(AGENTP)/net.c                                         \
 		$(AGENTP)/sched.c                                       \
 		$(AGENTP)/triggers.c                                    \
 		$(AGENTP)/core.c
-	$(CC) -shared -o libemagent.so *.o
+	$(CC) -shared -fpic -s -o libemagent.so *.o
 
 install:
 	cp ./libemagent.so $(INSTDIR)
 	mkdir -p $(INCLDIR)
 	cp -r ../include/emage.h $(INCLDIR)/
-	cp -r ../include/emlog.h $(INCLDIR)/
+#	cp -r ../include/emlog.h $(INCLDIR)/
 
 uninstall:
 	rm $(INSTDIR)/libemagent.so
 	rm -f $(INCLDIR)/emage.h
-	rm -f $(INCLDIR)/emlog.h
+#	rm -f $(INCLDIR)/emlog.h

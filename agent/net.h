@@ -14,7 +14,7 @@
  */
 
 /*
- * Empower Agent internal network logic.
+ * Empower Agent internal network logic
  */
 
 #ifndef __EMAGE_NET_H
@@ -22,55 +22,63 @@
 
 #include <pthread.h>
 
-/* Not connected to the controller. */
-#define EM_STATUS_NOT_CONNECTED		0
+#include "visibility.h"
+
+/* Not connected to the controller */
+#define EM_STATUS_NOT_CONNECTED         0
 /* Connected to the controller. */
-#define EM_STATUS_CONNECTED		1
+#define EM_STATUS_CONNECTED             1
 
 /* Default buffer size. */
-#define EM_BUF_SIZE			4096
+#define EM_BUF_SIZE                     4096
 
-/* Private context of a network listener. */
+/* Private context of a network listener */
 struct net_context {
-	/* Address to listen. */
-	char addr[16];
+	/* Address to listen  */
+	char               addr[16];
 	/* Port to listen. */
-	unsigned short port;
-	/* Socket fd used for communication. */
-	int sockfd;
+	unsigned short     port;
+	/* Socket fd used for communication */
+	int                sockfd;
 
-	/* A value different than 0 stop this listener. */
-	int stop;
-	/* Status of the listener. */
-	int status;
-	/* Sequence number. */
-	unsigned int seq;
+	/* A value different than 0 stop this listener.*/
+	int                stop;
+	/* Status of the listener */
+	int                status;
+	/* Sequence number; can potentially overflow */
+	unsigned int       seq;
 
-	/* Thread in charge of this listening. */
-	pthread_t thread;
-	/* Lock for elements of this context. */
+	/* Buffer where message received are dumped.
+	 * This is used to avoid using too much stack area.
+	 */
+	char               buf[EM_BUF_SIZE];
+
+	/* Thread in charge of this listening */
+	pthread_t          thread;
+	/* Lock for elements of this context */
 	pthread_spinlock_t lock;
-	/* Time to wait at the end of each loop, in ms. */
-	unsigned int interval;
+	/* Time to wait at the end of each loop, in ms */
+	unsigned int       interval;
 };
 
 /* Get the next valid sequence number to emit with this context. */
-unsigned int net_next_seq(struct net_context * net);
+INTERNAL unsigned int em_net_next_seq(struct net_context * net);
 
 /* Adjust the context due a network error. */
-int net_not_connected(struct net_context * net);
+INTERNAL int em_net_not_connected(struct net_context * net);
 
 /* Send a generic message using the network listener logic.
  */
-int net_send(struct net_context * net, char * buf, unsigned int size);
+INTERNAL int em_net_send(
+	struct net_context * net, char * buf, unsigned int size);
 
 /* Start a new listener in a different threading context.
  *
  * Returns 0 on success, otherwise a negative error number.
  */
-int net_start(struct net_context * net);
+INTERNAL int em_net_start(struct net_context * net);
 
 /* Order the network listener to stop it's operations. */
-int net_stop(struct net_context * net);
+INTERNAL int em_net_stop(struct net_context * net);
 
 #endif /* __EMAGE_NET_H */

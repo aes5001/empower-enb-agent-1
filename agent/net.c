@@ -34,15 +34,9 @@
 #include <sys/types.h>
 
 #include <emage.h>
-#include <emlog.h>
 #include <emage/emproto.h>
 
 #include "agent.h"
-#include "net.h"
-#include "sched.h"
-
-#include "emlist.h"
-#include "sched.h"
 
 #define NET_WAIT_TIME           300      /* 300ms in usec */
 
@@ -50,18 +44,22 @@
  * Network procedures.                                                        *
  ******************************************************************************/
 
-/* Common operations done when it successfully connects again. */
-int net_connected(struct net_context * net) {
-	struct agent * a = container_of(net, struct agent, net);
+/* Common operations done when it successfully connects again */
+INTERNAL
+int
+em_net_connected(struct net_context * net)
+{
+	struct agent *     a = container_of(net, struct agent, net);
 	struct sched_job * h = 0;
 
-	EMDBG("Connected to controller %s:%d", net->addr, net->port);
+	EMDBG(a, "Connected to controller %s:%d\n", net->addr, net->port);
+
 	net->status = EM_STATUS_CONNECTED;
 
 	h = malloc(sizeof(struct sched_job));
 
 	if(!h) {
-		EMLOG("No more memory!");
+		//EMLOG("No more memory!");
 		return -1;
 	}
 
@@ -71,13 +69,19 @@ int net_connected(struct net_context * net) {
 	h->type       = JOB_TYPE_HELLO;
 	h->reschedule = -1;
 
-	/* Add the Hello message. */
-	sched_add_job(h, &a->sched);
+	/* Schedule the Hello task, which sends hello messages at a well defined
+	 * time interval.
+	 */
+	em_sched_add_job(h, &a->sched);
 
 	return 0;
 }
 
-unsigned int net_next_seq(struct net_context * net) {
+/* Select the next sequence number relative to a network context */
+INTERNAL
+unsigned int
+em_net_next_seq(struct net_context * net)
+{
 	int ret = 0;
 
 	pthread_spin_lock(&net->lock);
@@ -87,8 +91,11 @@ unsigned int net_next_seq(struct net_context * net) {
 	return ret;
 }
 
-/* Turn the socket in an non-blocking one. */
-int net_noblock_socket(int sockfd) {
+/* Turn the socket in an non-blocking one */
+INTERNAL
+int
+em_net_noblock_socket(int sockfd)
+{
 	int flags = fcntl(sockfd, F_GETFL, 0);
 
 	if(flags < 0) {
@@ -98,9 +105,15 @@ int net_noblock_socket(int sockfd) {
 	return fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 }
 
-/* Apply the desired personalization to the socket. */
-int net_nodelay_socket(int sockfd) {
+/* Set the socket to immediately send the data and do not accumulate it in big
+ * chunks.
+ */
+INTERNAL
+int
+em_net_nodelay_socket(int sockfd)
+{
 	int flag = 1; /* Enable no delay... */
+
 	int result = setsockopt(
 		sockfd,
 		SOL_TCP,
@@ -109,25 +122,24 @@ int net_nodelay_socket(int sockfd) {
 		sizeof(int));
 
 	if (result < 0) {
-		EMLOG("Could not personalize the socket!");
-		perror("setsockopt");
-
 		return -1;
 	}
 
 	return 0;
 }
 
-int net_not_connected(struct net_context * net) {
-	EMDBG("No more connected with controller!");
-
+/* Perform disconnection operation to reset part of the network context */
+INTERNAL
+int
+em_net_not_connected(struct net_context * net)
+{
 	if(net->sockfd > 0) {
 		close(net->sockfd);
 		net->sockfd = -1;
 	}
 
 	net->status = EM_STATUS_NOT_CONNECTED;
-	net->seq = 0;
+	net->seq    = 0;
 
 	return 0;
 }
@@ -138,31 +150,32 @@ int net_not_connected(struct net_context * net) {
  *
  * Returns a negative number on error.
  */
-int net_connect_to_controller(struct net_context * net) {
-	int flags  = 0;
-	int status = 0;
-
+INTERNAL
+int
+em_net_connect_to_controller(struct net_context * net)
+{
+	struct agent *     a       = container_of(net, struct agent, net);
+	int                flags   = 0;
+	int                status  = 0;
 	struct sockaddr_in srvaddr = {0};
-	struct hostent * ctrli = 0;
+	struct hostent *   ctrli   = 0;
 
 	if(net->sockfd < 0) {
-		status = socket(AF_INET, SOCK_STREAM, 0);
+		net->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-		flags = fcntl(status, F_GETFL, 0);
-
-		if(flags >= 0) {
-			flags = flags | O_NONBLOCK;
-
-			if(fcntl(status, F_SETFL, flags)) {
-				EMLOG("Cannot mark socket as NONBLOCK!");
-			}
+		if(net->sockfd) {
+			em_net_noblock_socket(net->sockfd);
+			em_net_nodelay_socket(net->sockfd);
 		} else {
-			EMLOG("Cannot mark socket as NONBLOCK!");
+			EMLOG(a, "ERROR: Can't create a socket, %d\n",
+				net->sockfd);
+
+			return -1;
 		}
 	}
-
+#if 0
 	if(status < 0) {
-		EMLOG("Could not create the socket, error=%d", net->sockfd);
+		//EMLOG("Could not create the socket, error=%d", net->sockfd);
 		perror("socket");
 
 		return -1;
@@ -170,16 +183,15 @@ int net_connect_to_controller(struct net_context * net) {
 	/* Socket has been created now. */
 	else if (status > 0) {
 		net->sockfd = status;
-		net_nodelay_socket(net->sockfd);
+		em_net_nodelay_socket(net->sockfd);
 	}
-
-	EMDBG("Connecting to %s:%d...", net->addr, net->port);
+#endif
 
 	ctrli = gethostbyname(net->addr);
 
 	if(!ctrli) {
-		EMLOG("Could not resolve controller!");
-		perror("gethostbyname");
+		EMLOG(a, "ERROR: Resolve controller address %.16s\n",
+			net->addr);
 
 		return -1;
 	}
@@ -209,7 +221,7 @@ again:
 			goto again;
 		}
 
-		EMDBG("Error while connecting to %s, error=%d",
+		EMDBG(a, "Error while connecting to %.16s, error=%d\n",
 			net->addr,
 			status);
 
@@ -220,12 +232,18 @@ again:
 }
 
 /* Receive data. */
-int net_recv(struct net_context * context, char * buf, unsigned int size) {
+INTERNAL
+int
+em_net_recv(struct net_context * context, char * buf, unsigned int size)
+{
 	return recv(context->sockfd, buf, size, MSG_DONTWAIT | MSG_NOSIGNAL);
 }
 
 /* Send data. */
-int net_send(struct net_context * context, char * buf, unsigned int size) {
+INTERNAL
+int
+em_net_send(struct net_context * context, char * buf, unsigned int size)
+{
 	/* NOTE:
 	 * Since sending on a dead socket can cause a signal to be issued to the
 	 * application (SIGPIPE), we don't want that the host get disturbed by
@@ -243,19 +261,21 @@ int net_send(struct net_context * context, char * buf, unsigned int size) {
  *	the 'args' parameter is coped into the job arguments field (using size 
  *	to know the amount of new allocation).
  */
-int net_sched_job(
+INTERNAL
+int
+em_net_sched_job(
 	struct agent * a,
-	unsigned int id,
-	int type,
-	int interval,
-	int res,
-	void * args,
-	unsigned int size) {
-
+	unsigned int   id,
+	int            type,
+	int            interval,
+	int            res,
+	void *         args,
+	unsigned int   size)
+{
 	struct sched_job * job = malloc(sizeof(struct sched_job));
 
 	if(!job) {
-		EMLOG("Not enough memory!");
+		EMLOG(a, "ERROR: Not enough memory to create new job\n");
 		return -1;
 	}
 
@@ -269,7 +289,7 @@ int net_sched_job(
 
 		if(!job->args) {
 			free(job);
-			EMLOG("Not enough memory!");
+			EMLOG(a, "ERROR: Not enough memory for new buffer\n");
 			return -1;
 		}
 
@@ -287,7 +307,9 @@ int net_sched_job(
 	job->elapse     = interval;
 	job->reschedule = res;
 
-	sched_add_job(job, &a->sched);
+	EMDBG(a, "Network scheduling new job type %d\n", type);
+
+	em_sched_add_job(job, &a->sched);
 
 	return 0;
 }
@@ -296,16 +318,25 @@ int net_sched_job(
  * Message specific procedures.                                               *
  ******************************************************************************/
 
-int net_sc_hello(struct net_context * net, char * msg, int size)
+/* Handle a scheduled event Hello message */
+INTERNAL
+int
+em_net_sc_hello(struct net_context * net, char * msg, int size)
 {
 	struct sched_job * j;
 	struct agent *     a = container_of(net, struct agent, net);
 	uint32_t           intv;
 
-	EMDBG("Schedule message Hello");
+	EMDBG(a, "Network processing Hello\n");
 
-	/* Find the Hello job and change its interval */
-	j = sched_find_job(&a->sched, 0, JOB_TYPE_HELLO);
+	/* Find the Hello job and change its interval.
+	 *
+	 * WARNING:
+	 * We are handling a reference here, and there could be problem is the
+	 * job is removed from the list. Luckily here Hello is always maintained
+	 * into the queue, but this can be false for other type of messages.
+	 */
+	j = em_sched_find_job(&a->sched, 0, JOB_TYPE_HELLO);
 
 	if(j) {
 		intv      = epp_sched_interval(msg, size);
@@ -315,95 +346,115 @@ int net_sc_hello(struct net_context * net, char * msg, int size)
 	return 0;
 }
 
-int net_se_cell_setup(struct net_context * net, char * msg, int size)
+/* Handle a single event Cell capabilities message */
+INTERNAL
+int
+em_net_se_cell_setup(struct net_context * net, char * msg, int size)
 {
 	uint32_t       seq;
 	struct agent * a = container_of(net, struct agent, net);
 
 	seq = epp_seq(msg, size);
 
-	EMDBG("Single message cell setup");
+	EMDBG(a, "Network processing Cell Capabilities, seq=%u\n", seq);
 
-	return net_sched_job(a, seq, JOB_TYPE_CELL_SETUP, 1, 0, msg, size);
+	return em_net_sched_job(a, seq, JOB_TYPE_CELL_SETUP, 1, 0, msg, size);
 }
 
-int net_se_enb_setup(struct net_context * net, char * msg, int size)
+/* Handle a single event eNB capabilities message */
+INTERNAL
+int
+em_net_se_enb_setup(struct net_context * net, char * msg, int size)
 {
 	uint32_t       seq;
 	struct agent * a = container_of(net, struct agent, net);
 
 	seq = epp_seq(msg, size);
 
-	EMDBG("Single message eNB setup");
+	EMDBG(a, "Network processing eNB Capabilities, seq=%u\n", seq);
 
-	return net_sched_job(a, seq, JOB_TYPE_ENB_SETUP, 1, 0, msg, size);
+	return em_net_sched_job(a, seq, JOB_TYPE_ENB_SETUP, 1, 0, msg, size);
 }
 
-int net_se_ho(struct net_context * net, char * msg, int size)
+/* handle a single event Handover message */
+INTERNAL
+int
+em_net_se_ho(struct net_context * net, char * msg, int size)
 {
 	uint32_t       seq;
 	struct agent * a = container_of(net, struct agent, net);
 
 	seq = epp_seq(msg, size);
 
-	EMDBG("Single message Handover");
+	EMDBG(a, "Network processing Handover, seq=%u\n", seq);
 
-	return net_sched_job(a, seq, JOB_TYPE_HO, 1, 0, msg, size);
+	return em_net_sched_job(a, seq, JOB_TYPE_HO, 1, 0, msg, size);
 }
 
-/* RAN setup */
-int net_se_rans(struct net_context * net, char * msg, int size)
+/* Handle a single event RAN Setup message */
+INTERNAL
+int
+em_net_se_rans(struct net_context * net, char * msg, int size)
 {
         uint32_t       seq;
         struct agent * a = container_of(net, struct agent, net);
 
         seq = epp_seq(msg, size);
 
-        EMDBG("Single message RAN setup");
+        EMDBG(a, "Network processing RAN Setup, seq=%u\n", seq);
 
-        return net_sched_job(a, seq, JOB_TYPE_RAN_SETUP, 1, 0, msg, size);
+        return em_net_sched_job(a, seq, JOB_TYPE_RAN_SETUP, 1, 0, msg, size);
 }
 
-/* RAN tenant */
-int net_se_rant(struct net_context * net, char * msg, int size)
+/* Handle a single event RAN Tenant message */
+INTERNAL
+int
+em_net_se_rant(struct net_context * net, char * msg, int size)
 {
         uint32_t       seq;
         struct agent * a = container_of(net, struct agent, net);
 
         seq = epp_seq(msg, size);
 
-        EMDBG("Single message RAN tenant");
+        EMDBG(a, "Network processing RAN Tenant, seq=%u\n", seq);
 
-        return net_sched_job(a, seq, JOB_TYPE_RAN_TENANT, 1, 0, msg, size);
+        return em_net_sched_job(a, seq, JOB_TYPE_RAN_TENANT, 1, 0, msg, size);
 }
 
-/* RAN user */
-int net_se_ranu(struct net_context * net, char * msg, int size)
+/* Handle a single event RAN User message */
+INTERNAL
+int
+em_net_se_ranu(struct net_context * net, char * msg, int size)
 {
         uint32_t       seq;
         struct agent * a = container_of(net, struct agent, net);
 
         seq = epp_seq(msg, size);
 
-        EMDBG("Single message RAN user");
+        EMDBG(a, "Network processing RAN User, seq=%u\n", seq);
 
-        return net_sched_job(a, seq, JOB_TYPE_RAN_USER, 1, 0, msg, size);
+        return em_net_sched_job(a, seq, JOB_TYPE_RAN_USER, 1, 0, msg, size);
 }
 
-/* RAN scheduler */
-int net_se_ranc(struct net_context * net, char * msg, int size)
+/* Handle a single event RAN Scheduler */
+INTERNAL
+int
+em_net_se_ranc(struct net_context * net, char * msg, int size)
 {
         uint32_t       seq;
         struct agent * a = container_of(net, struct agent, net);
 
         seq = epp_seq(msg, size);
 
-        EMDBG("Single message RAN scheduler");
+        EMDBG(a, "Network processing RAN Scheduler, seq=%u\n", seq);
 
-        return net_sched_job(a, seq, JOB_TYPE_RAN_SCHEDULER, 1, 0, msg, size);
+        return em_net_sched_job(a, seq, JOB_TYPE_RAN_SCHEDULER, 1, 0, msg, size);
 }
 
-int net_te_ue_measure(struct net_context * net, char * msg, int size)
+/* Handle a trigger event RAN Measurement message */
+INTERNAL
+int
+em_net_te_ue_measure(struct net_context * net, char * msg, int size)
 {
 	uint32_t         mod;
 	uint32_t         seq;
@@ -420,26 +471,30 @@ int net_te_ue_measure(struct net_context * net, char * msg, int size)
 
 	epp_trigger_uemeas_req(msg, size, &m_id, 0, 0, 0, 0, 0);
 
-	EMDBG("Trigger message UE measure, mod=%d, op=%d", mod, op);
+	EMDBG(a, "Network processing UE Measurement, seq=%u, meas=%u, mod=%u\n",
+		seq, m_id, mod);
 
 	if(op == EP_OPERATION_ADD) {
-		t = tr_add(
+		t = em_tr_add(
 			&a->trig,
-			tr_next_id(&a->trig),
+			em_tr_next_id(&a->trig),
 			mod,
 			TR_TYPE_UE_MEAS,
 			(int)m_id,
 			msg,
 			size);
 	} else {
-		return tr_del(&a->trig, mod, TR_TYPE_UE_MEAS, (int)m_id);
+		return em_tr_del(&a->trig, mod, TR_TYPE_UE_MEAS, (int)m_id);
 	}
 
-	return net_sched_job(
+	return em_net_sched_job(
 		a, seq, JOB_TYPE_UE_MEASURE, 1, 0, t, sizeof(struct trigger));
 }
 
-int net_te_ue_report(struct net_context * net, char * msg, int size)
+/* Handle a trigger event UE Report message */
+INTERNAL
+int
+em_net_te_ue_report(struct net_context * net, char * msg, int size)
 {
 	uint32_t         mod;
 	uint32_t         seq;
@@ -453,26 +508,29 @@ int net_te_ue_report(struct net_context * net, char * msg, int size)
 	seq = epp_seq(msg, size);
 	op  = epp_trigger_op(msg, size);
 
-	EMDBG("Trigger message UE report, mod=%d, op=%d", mod, op);
+	EMDBG(a, "Network processing UE Report, seq=%u, mod=%u\n", seq, mod);
 
 	if(op == EP_OPERATION_ADD) {
-		t = tr_add(
+		t = em_tr_add(
 			&a->trig,
-			tr_next_id(&a->trig),
+			em_tr_next_id(&a->trig),
 			mod,
 			TR_TYPE_UE_REP,
 			0,
 			msg,
 			size);
 	} else {
-		return tr_del(&a->trig, mod, TR_TYPE_UE_REP, 0);
+		return em_tr_del(&a->trig, mod, TR_TYPE_UE_REP, 0);
 	}
 
-	return net_sched_job(
+	return em_net_sched_job(
 		a, seq, JOB_TYPE_UE_REPORT, 1, 0, t, sizeof(struct trigger));
 }
 
-int net_te_mac_report(struct net_context * net, char * msg, int size)
+/* Handle a trigger event MAC report message */
+INTERNAL
+int
+em_net_te_mac_report(struct net_context * net, char * msg, int size)
 {
 	uint32_t         mod;
 	uint32_t         seq;
@@ -486,22 +544,22 @@ int net_te_mac_report(struct net_context * net, char * msg, int size)
 	seq = epp_seq(msg, size);
 	op  = epp_trigger_op(msg, size);
 
-	EMDBG("Trigger message MAC report, mod=%d, op=%d", mod, op);
+	EMDBG(a, "Network processing MAC Report, seq=%u, mod=%u\n", seq, mod);
 
 	if(op == EP_OPERATION_ADD) {
-		t = tr_add(
+		t = em_tr_add(
 			&a->trig,
-			tr_next_id(&a->trig),
+			em_tr_next_id(&a->trig),
 			mod,
 			TR_TYPE_MAC_REP,
 			0,
 			msg,
 			size);
 	} else {
-		return tr_del(&a->trig, mod, TR_TYPE_MAC_REP, 0);
+		return em_tr_del(&a->trig, mod, TR_TYPE_MAC_REP, 0);
 	}
 
-	return net_sched_job(
+	return em_net_sched_job(
 		a, seq, JOB_TYPE_MAC_REPORT, 1, 0, t, sizeof(struct trigger));
 }
 
@@ -509,38 +567,50 @@ int net_te_mac_report(struct net_context * net, char * msg, int size)
  * Top-level message handlers.                                                *
  ******************************************************************************/
 
-int net_process_sched_event(
+/* Handle a generic Schedule Event message */
+INTERNAL
+int
+em_net_process_sched_event(
 	struct net_context * net, char * msg, unsigned int size)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
 	ep_act_type s = epp_schedule_type(msg, size);
 
 	if(s == EP_ACT_INVALID) {
-		EMDBG("Malformed schedule-event message received!\n");
+		EMDBG(a, "Malformed schedule-event message received!\n");
 		return -1;
 	}
 
 	switch(s) {
 	case EP_ACT_HELLO:
 		if(epp_schedule_dir(msg, size) == EP_DIR_REPLY) {
-			EMDBG("Hello reply received!");
-			return net_sc_hello(net, msg, size);
+			return em_net_sc_hello(net, msg, size);
 		}
 		break;
 	default:
-		EMDBG("Unknown scheduled event, type=%d", s);
+		EMDBG(a, "Unknown schedule-event message received, type=%d\n",
+			s);
 		break;
 	}
 
 	return 0;
 }
 
-int net_process_single_event(
+/* Handle a generic Single Event message */
+INTERNAL
+int
+em_net_process_single_event(
 	struct net_context * net, char * msg, unsigned int size)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
 	ep_act_type s = epp_single_type(msg, size);
 
 	if(s == EP_ACT_INVALID) {
-		EMDBG("Malformed single-event message received!\n");
+		EMDBG(a, "Malformed single-event message received!\n");
 		return -1;
 	}
 
@@ -550,61 +620,61 @@ int net_process_single_event(
 		break;
 	case EP_ACT_ECAP:
 		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-			EMDBG("eNB capabilities request received!");
-			return net_se_enb_setup(net, msg, size);
+			return em_net_se_enb_setup(net, msg, size);
 		}
 		break;
 	case EP_ACT_CCAP:
 		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-			EMDBG("Cell capabilities request received!");
-			return net_se_cell_setup(net, msg, size);
+			return em_net_se_cell_setup(net, msg, size);
 		}
 		break;
 	case EP_ACT_HANDOVER:
 		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-			EMDBG("Handover request received!");
-			return net_se_ho(net, msg, size);
+			return em_net_se_ho(net, msg, size);
 		}
 		break;
         case EP_ACT_RAN_SETUP:
                 if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-                        EMDBG("RAN setup request received!");
-                        return net_se_rans(net, msg, size);
+                        return em_net_se_rans(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_TENANT:
                 if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-                        EMDBG("RAN Tenants request received!");
-                        return net_se_rant(net, msg, size);
+                        return em_net_se_rant(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_USER:
                 if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-                        EMDBG("RAN Users request received!");
-                        return net_se_ranu(net, msg, size);
+                        return em_net_se_ranu(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_SCHED:
                 if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
-                        EMDBG("RAN Schedulers request received!");
-                        return net_se_ranc(net, msg, size);
+                        return em_net_se_ranc(net, msg, size);
                 }
                 break;
 	default:
-		EMDBG("Unknown single event, type=%d", s);
+		EMDBG(a, "Unknown single-event message received, type=%d\n",
+			s);
 		break;
 	}
 
 	return 0;
 }
 
-int net_process_trigger_event(
+/* Handle a generic trigger-event message */
+INTERNAL
+int
+em_net_process_trigger_event(
 	struct net_context * net, char * msg, unsigned int size)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
 	ep_act_type t = epp_trigger_type(msg, size);
 
 	if(t == EP_ACT_INVALID) {
-		EMDBG("Malformed trigger-event message received!\n");
+		EMDBG(a, "Malformed trigger-event message received!\n");
 		return -1;
 	}
 
@@ -613,13 +683,14 @@ int net_process_trigger_event(
 		/* Don't really care about the hello reply now */
 		break;
 	case EP_ACT_UE_REPORT:
-		return net_te_ue_report(net, msg, size);
+		return em_net_te_ue_report(net, msg, size);
 	case EP_ACT_UE_MEASURE:
-		return net_te_ue_measure(net, msg, size);
+		return em_net_te_ue_measure(net, msg, size);
 	case EP_ACT_MAC_REPORT:
-		return net_te_mac_report(net, msg, size);
+		return em_net_te_mac_report(net, msg, size);
 	default:
-		EMDBG("Unknown trigger event, type=%d", t);
+		EMDBG(a, "Unknown trigger-event message received, type=%d\n",
+			t);
 		break;
 	}
 
@@ -627,22 +698,27 @@ int net_process_trigger_event(
 }
 
 /* Process incoming messages. */
-int net_process_message(struct net_context * net, char * msg, unsigned int size)
+INTERNAL
+int
+em_net_process_message(struct net_context * net, char * msg, unsigned int size)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
 	ep_msg_type mt = epp_msg_type(msg, size);
 
 	switch(mt) {
 	/* Single events messages. */
 	case EP_TYPE_SINGLE_MSG:
-		return net_process_single_event(net, msg, size);
+		return em_net_process_single_event(net, msg, size);
 	/* Scheduled events messages. */
 	case EP_TYPE_SCHEDULE_MSG:
-		return net_process_sched_event(net, msg, size);
+		return em_net_process_sched_event(net, msg, size);
 	/* Triggered events messages. */
 	case EP_TYPE_TRIGGER_MSG:
-		return net_process_trigger_event(net, msg, size);
+		return em_net_process_trigger_event(net, msg, size);
 	default:
-		EMDBG("Unknown message received, size=%d", size);
+		EMDBG(a, "Unknown message received, type=%d\n", mt);
 		break;
 	}
 
@@ -653,20 +729,24 @@ int net_process_message(struct net_context * net, char * msg, unsigned int size)
  * Network listener logic.                                                    *
  ******************************************************************************/
 
-void * net_loop(void * args)
+/* Loop executed by the network context. When started the net_context thread
+ * will be running this piece of code.
+ */
+INTERNAL
+void *
+em_net_loop(void * args)
 {
 	struct net_context * net = (struct net_context *)args;
-
-	int op;
-	int bread;
-	int mlen  = 0;
-
-	char buf[EM_BUF_SIZE] = {0};
-
-	unsigned int wi = net->interval;
-	struct timespec wt = {0};	/* Wait time. */
-	struct timespec wc = {0};	/* Wait time for reconnection. */
-	struct timespec td = {0};
+#ifdef EBUG
+	struct agent *       a = container_of(net, struct agent, net);
+#endif
+	int                  op;
+	int                  bread;
+	int                  mlen  = 0;
+	unsigned int         wi = net->interval;
+	struct timespec      wt = {0};	/* Wait time. */
+	struct timespec      wc = {0};	/* Wait time for reconnection. */
+	struct timespec      td = {0};
 
 	/* Convert the wait interval in a timespec struct. */
 	while(wi >= 1000) {
@@ -679,6 +759,8 @@ void * net_loop(void * args)
 	wc.tv_sec  = 1 + wt.tv_sec;
 	wc.tv_nsec = wt.tv_nsec;
 
+	EMDBG(a, "Network loop starting, interval=%d ms\n", net->interval);
+
 	while(1) {
 next:
 		if(net->status == EM_STATUS_NOT_CONNECTED) {
@@ -686,13 +768,13 @@ next:
 				goto stop;
 			}
 
-			if(net_connect_to_controller(net) == 0) {
-				net_connected(net);
+			if(em_net_connect_to_controller(net)) {
+				/* Relax the CPU and retry connection */
+				nanosleep(&wc, &td);
+				continue;
 			}
 
-			/* Relax the CPU. */
-			nanosleep(&wc, &td);
-			continue;
+			em_net_connected(net);
 		}
 
 		bread = 0;
@@ -703,8 +785,8 @@ next:
 				goto stop;
 			}
 
-			op = net_recv(
-				net, buf + bread, EP_HEADER_SIZE - bread);
+			op = em_net_recv(
+				net, net->buf + bread, EP_HEADER_SIZE - bread);
 
 			if(op <= 0) {
 				if(errno == EAGAIN) {
@@ -713,7 +795,7 @@ next:
 					continue;
 				}
 
-				net_not_connected(net);
+				em_net_not_connected(net);
 				goto next;
 			}
 
@@ -721,16 +803,16 @@ next:
 		}
 
 		if(bread != EP_HEADER_SIZE) {
-			EMDBG("Read %d bytes, but only %ld to process!",
+			EMDBG(a, "Read %d bytes, but %ld to process!\n",
 				bread, EP_HEADER_SIZE);
 
-			net_not_connected(net);
-			goto next;
+			em_net_not_connected(net);
+			continue;
 		}
 
-		mlen = epp_msg_length(buf, bread);
+		mlen = epp_msg_length(net->buf, bread);
 
-		EMDBG("Receiving a message of size %d", mlen);
+		EMDBG(a, "Collecting a message of size %d\n", mlen);
 
 		//bread = 0;
 
@@ -740,7 +822,7 @@ next:
 				goto stop;
 			}
 
-			op = net_recv(net, buf + bread, mlen - bread);
+			op = em_net_recv(net, net->buf + bread, mlen - bread);
 
 			if(op <= 0) {
 				if(errno == EAGAIN) {
@@ -749,27 +831,29 @@ next:
 					continue;
 				}
 
-				net_not_connected(net);
+				em_net_not_connected(net);
 				goto next;
+				continue;
 			}
 
 			bread += op;
 		}
 
 		if(bread != mlen) {
-			EMDBG("Read %d bytes, but only %d to process!",
+			EMDBG(a, "Read %d bytes out of %d\n",
 				bread, mlen);
 
-			net_not_connected(net);
-			goto next;
+			em_net_not_connected(net);
+			//goto next;
+			continue;
 		}
 
 		/* Finally we collected the entire message; process it! */
-		net_process_message(net, buf, bread);
+		em_net_process_message(net, net->buf, bread);
 	}
 
 stop:
-	EMDBG("Listening loop is terminating...");
+	EMDBG(a, "Network loop exiting...\n");
 
 	/*
 	 * If you need to release 'net' specific resources, do it here!
@@ -778,8 +862,17 @@ stop:
 	return 0;
 }
 
-int net_start(struct net_context * net)
+/* Start a network context in its own thread context */
+INTERNAL
+int
+em_net_start(struct net_context * net)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
+
+	EMDBG(a, "Initializing networking context\n");
+
 	net->interval = NET_WAIT_TIME;
 	net->sockfd   = -1;
 
@@ -787,17 +880,25 @@ int net_start(struct net_context * net)
 
 	/* Create the context where the agent scheduler will run on. */
 	if(pthread_create(
-		(pthread_t *)&net->thread, NULL, net_loop, net)) {
-
-		EMLOG("Failed to create the listener agent thread.");
+		(pthread_t *)&net->thread, NULL, em_net_loop, net))
+	{
 		return -1;
 	}
 
 	return 0;
 }
 
-int net_stop(struct net_context * net)
+/* Stop a network context by terminating its thread */
+INTERNAL
+int
+em_net_stop(struct net_context * net)
 {
+#ifdef EBUG
+	struct agent * a = container_of(net, struct agent, net);
+#endif
+
+	EMDBG(a, "Stopping networking context\n");
+
 	/* Stop and wait for it... */
 	net->stop = 1;
 	pthread_join(net->thread, 0);

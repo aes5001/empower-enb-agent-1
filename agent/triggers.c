@@ -22,27 +22,48 @@
 
 #include <pthread.h>
 
-#include <emlog.h>
 #include <emage/emproto.h>
 
-#include "triggers.h"
+#include "agent.h"
 
-struct trigger * tr_add(
+/******************************************************************************
+ * Locking and atomic context                                                 *
+ ******************************************************************************/
+
+/* Holds the lock to access critical part of a network context */
+#define trig_lock_ctx(t)        pthread_spin_lock(&t->lock)
+
+/* Relinquishes the lock to access critical part of a network context */
+#define trig_unlock_ctx(t)      pthread_spin_unlock(&t->lock)
+
+/******************************************************************************
+ * Procedures                                                                 *
+ ******************************************************************************/
+
+/* Add a new trigger with given characteristics in the given context */
+INTERNAL
+struct trigger *
+em_tr_add(
 	struct tr_context * tc,
-	int id, int mod, int type, int instance,
-	char * req, unsigned char size)
+	int                 id,
+	int                 mod,
+	int                 type,
+	int                 instance,
+	char *              req,
+	unsigned char       size)
 {
-	struct trigger * t = tr_has_trigger_ext(tc, mod, type, instance);
+	struct agent *   a = container_of(tc, struct agent, trig);
+	struct trigger * t = em_tr_find_ext(tc, mod, type, instance);
 
 	if(t) {
-		EMDBG("Trigger %d already exists", type);
+		EMDBG(a, "Trigger id %d, type %d already exists\n", id, type);
 		return t;
 	}
 
 	t = malloc(sizeof(struct trigger));
 
 	if(!t) {
-		EMLOG("Not enough memory for new trigger!");
+		EMLOG(a, "Not enough memory for new trigger!\n");
 		return 0;
 	}
 
@@ -52,7 +73,7 @@ struct trigger * tr_add(
 		t->req = malloc(sizeof(char) * size);
 
 		if(!t->req) {
-			EMLOG("Not enough memory for new trigger!");
+			EMLOG(a, "Not enough memory for new buffer!\n");
 			free(t);
 			return 0;
 		}
@@ -67,124 +88,156 @@ struct trigger * tr_add(
 	t->type     = type;
 	t->instance = instance;
 
-	pthread_spin_lock(&tc->lock);
-	list_add(&t->next, &tc->ts);
-	pthread_spin_unlock(&tc->lock);
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
 
-	EMDBG("New trigger enabled, id=%d, type=%d", id, type);
+	list_add(&t->next, &tc->ts);
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	//EMDBG("New trigger enabled, id=%d, type=%d", id, type);
 
 	return t;
 }
 
-int tr_del(struct tr_context * tc, int mod, int type, int instance)
+/* Delete a trigger with given characteristics from the context */
+INTERNAL
+int
+em_tr_del(struct tr_context * tc, int mod, int type, int instance)
 {
+#ifdef EBUG
+	struct agent *   a = container_of(tc, struct agent, trig);
+#endif
 	struct trigger * t = 0;
 	struct trigger * u = 0;
-	int found = 0;
 
-	pthread_spin_lock(&tc->lock);
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
 	list_for_each_entry_safe(t, u, &tc->ts, next) {
 		if(t->type == type &&
 			t->mod == mod &&
 			t->instance == instance) {
 
 			list_del(&t->next);
-			pthread_spin_unlock(&tc->lock);
+			trig_unlock_ctx(tc);
+
+			EMDBG(a, "Removing trigger %d, type=%d, mod=%d\n",
+				t->id, t->type, t->mod);
 
 			if(t->req) {
 				free(t->req);
 			}
 
-			tr_free(t);
+			em_tr_free(t);
+
 			return 0;
 		}
 	}
-	pthread_spin_unlock(&tc->lock);
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	EMDBG(a, "Trigger doesn't exists, id=%d, type=%d, mod=%d \n",
+		t->id, t->type, t->mod);
 
 	return -1;
 }
 
-struct trigger * tr_find(struct tr_context * tc, int id)
+/* Find a trigger using its id */
+INTERNAL
+struct trigger *
+em_tr_find(struct tr_context * tc, int id)
 {
 	struct trigger * t = 0;
-	int found = 0;
+	int              f = 0;
 
-	pthread_spin_lock(&tc->lock);
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
 	list_for_each_entry(t, &tc->ts, next) {
 		if(t->id == id) {
-			pthread_spin_unlock(&tc->lock);
-			return t;
+			f = 1;
+			break;
 		}
 	}
-	pthread_spin_unlock(&tc->lock);
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	if(f) {
+		return t;
+	}
 
 	return 0;
 }
 
-struct trigger * tr_has_trigger(struct tr_context * tc, int id)
-{
-	struct trigger * t = 0;
-	int found = 0;
-
-	pthread_spin_lock(&tc->lock);
-	list_for_each_entry(t, &tc->ts, next) {
-		if(t->id == id) {
-			found = 1;
-			break;
-		}
-	}
-	pthread_spin_unlock(&tc->lock);
-
-	if(!found) {
-		return 0;
-	}
-
-	return t;
-}
-
-struct trigger * tr_has_trigger_ext(
+/* Find a trigger using multiple keys; a very specific task */
+INTERNAL
+struct trigger *
+em_tr_find_ext(
 	struct tr_context * tc, int mod, int type, int instance)
 {
 	struct trigger * t = 0;
-	int found = 0;
+	int              f = 0;
 
-	pthread_spin_lock(&tc->lock);
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
 	list_for_each_entry(t, &tc->ts, next) {
 		if(t->mod == mod &&
 			t->type == type &&
 			t->instance == instance) {
 
-			found = 1;
+			f = 1;
 			break;
 		}
 	}
-	pthread_spin_unlock(&tc->lock);
 
-	if(!found) {
-		return 0;
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	if(f) {
+		return t;
 	}
-
-	return t;
-}
-
-int tr_flush(struct tr_context * tc)
-{
-	struct trigger * t = 0;
-	struct trigger * u = 0;
-
-	pthread_spin_lock(&tc->lock);
-	list_for_each_entry_safe(t, u, &tc->ts, next) {
-		EMDBG("Flushing out trigger %d", t->id);
-
-		list_del(&t->next);
-		tr_free(t);
-	}
-	pthread_spin_unlock(&tc->lock);
 
 	return 0;
 }
 
-void tr_free(struct trigger * t)
+/* Remove any trigger from this context */
+INTERNAL
+int
+em_tr_flush(struct tr_context * tc)
+{
+#ifdef EBUG
+	struct agent *   a = container_of(tc, struct agent, trig);
+#endif
+	struct trigger * t = 0;
+	struct trigger * u = 0;
+
+	EMDBG(a, "Starting to clean triggers\n");
+
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
+	list_for_each_entry_safe(t, u, &tc->ts, next) {
+		EMDBG(a, "Flushing out trigger %d, mod=%d\n", t->id, t->mod);
+
+		list_del(&t->next);
+		em_tr_free(t);
+	}
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	return 0;
+}
+
+/* Free a single trigger releasing all its resources */
+INTERNAL
+void
+em_tr_free(struct trigger * t)
 {
 	if(t) {
 		if(t->req) {
@@ -195,7 +248,10 @@ void tr_free(struct trigger * t)
 	}
 }
 
-int tr_next_id(struct tr_context * tc)
+/* Acquire the next valid id for a trigger */
+INTERNAL
+int
+em_tr_next_id(struct tr_context * tc)
 {
 	struct trigger * t = 0;
 	int              n = 0;
@@ -209,35 +265,50 @@ int tr_next_id(struct tr_context * tc)
 			n++;
 		}
 
-		pthread_spin_lock(&tc->lock);
+/****** Start of the critical section *****************************************/
+		trig_lock_ctx(tc);
+
 		list_for_each_entry(t, &tc->ts, next) {
 			if(n == t->id) {
 				n = 0;
 				break;
 			}
 		}
-		n = tc->next++;
-		pthread_spin_unlock(&tc->lock);
+
+		trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
 	} while(!n);
 
 	return n;
 }
 
-int tr_rem(struct tr_context * tc, int id, int type)
+/* Remove a trigger from the given context  */
+INTERNAL
+int
+em_tr_rem(struct tr_context * tc, int id, int type)
 {
+#ifdef EBUG
+	struct agent *   a = container_of(tc, struct agent, trig);
+#endif
 	struct trigger * t = 0;
 	struct trigger * u = 0;
 
-	pthread_spin_lock(&tc->lock);
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
 	list_for_each_entry_safe(t, u, &tc->ts, next) {
 		if(t->id == id) {
-			EMDBG("Removing trigger %d", t->id);
+			EMDBG(a, "Removing trigger %d, mod=%d", t->id, t->mod);
 
 			list_del(&t->next);
+			em_tr_free(t);
+
 			break;
 		}
 	}
-	pthread_spin_unlock(&tc->lock);
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
 
 	return 0;
 }

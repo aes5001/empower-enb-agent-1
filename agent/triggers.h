@@ -21,6 +21,7 @@
 #define __EMAGE_TRIGGERS_H
 
 #include "emlist.h"
+#include "visibility.h"
 
 /* Possible type of triggers which can be created */
 enum trigger_type {
@@ -68,31 +69,32 @@ struct tr_context {
  * By adding a trigger you make it valid, since disabled triggers are just
  * removed from the list.
  */
-struct trigger * tr_add(
+struct trigger * em_tr_add(
 	struct tr_context * tc,
-	int id, int mod, int typ, int instance,
-	char * req, unsigned char size);
+	int                 id,
+	int                 mod,
+	int                 typ,
+	int                 instance,
+	char *              req,
+	unsigned char       size);
 
 /* Find, remove and free a trigger */
-int tr_del(struct tr_context * tc, int mod, int type, int instance);
+INTERNAL int em_tr_del(struct tr_context * tc, int mod, int type, int instance);
 
-/* Find an existing trigger */
-struct trigger * tr_find(struct tr_context * tc, int id);
+/* Find an trigger with given id */
+INTERNAL struct trigger * em_tr_find(struct tr_context * tc, int id);
 
-/* Flush everything and clean the context. */
-int tr_flush(struct tr_context * tc);
-
-/* Free the resources of a trigger */
-void tr_free(struct trigger * tc);
-
-/* Peek the context to see if it has a specific trigger. */
-struct trigger * tr_has_trigger(struct tr_context * tc, int id);
-
-/* Peek the context to see if it has trigger with specific keys. */
-struct trigger * tr_has_trigger_ext(
+/* Peek the context to see if it has trigger with specific keys */
+INTERNAL struct trigger * em_tr_find_ext(
 	struct tr_context * tc, int mod, int type, int instance);
 
+/* Flush everything and clean the context. */
+INTERNAL int em_tr_flush(struct tr_context * tc);
+
+/* Free the resources of a trigger */
+INTERNAL void em_tr_free(struct trigger * tc);
+
 /* Acquires the next usable trigger id */
-int tr_next_id(struct tr_context * tc);
+INTERNAL int em_tr_next_id(struct tr_context * tc);
 
 #endif

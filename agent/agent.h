@@ -13,38 +13,45 @@
  * limitations under the License.
  */
 
-/*
- * Definition for an agent.
+/* The agent header.
+ *
+ * The header contains the definition of an "agent" in the as logic organization
+ * of different contexts that works together to accomplish their jobs.
  */
 
 #ifndef __EMAGE_AGENT_H
 #define __EMAGE_AGENT_H
 
+#include "decor.h"
+#include "err.h"
 #include "emlist.h"
+#include "log.h"
 #include "net.h"
 #include "sched.h"
 #include "triggers.h"
 
+/* Agent operations are defined in emage.h, the public header */
 struct em_agent_ops;
 
 /* This is ultimately an agent. */
 struct agent {
-	/* Member of a list. */
-	struct list_head next;
+	/* Member of a list (there are more than one agent) */
+	struct list_head      next;
 
-	/* Base station id which the agent is serving. */
-	int b_id;
+	/* eNB ID  bound to this agent context */
+	int                   enb_id;
+	/* If set informs that the agent subsystem are not ready yet */
+	int                   init;
 
-	/* Registered, technology dependant, operations. */
+	/* Operations related to the agent */
 	struct em_agent_ops * ops;
 
-	/* Triggering context for this agent.*/
-	struct tr_context trig;
-
-	/* Network operation context for this agent. */
-	struct net_context net;
-	/* Scheduler context for this agent jobs. */
-	struct sched_context sched;
+	/* Context containing the active triggers of this agent */
+	struct tr_context     trig;
+	/* Context containing the network state machine */
+	struct net_context    net;
+	/* Context containing the state machine to run tasks in time */
+	struct sched_context  sched;
 };
 
 #endif /* __EMAGE_AGENT_H */

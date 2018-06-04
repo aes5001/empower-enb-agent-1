@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Kewin Rausch
+/* Copyright (c) 2016-2018 Kewin Rausch
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,58 +23,77 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-
 #include <pthread.h>
 
 #include <emage.h>
-#include <emlog.h>
 
 #include "agent.h"
-#include "emlist.h"
-#include "net.h"
-#include "sched.h"
-
-#include <emage/emproto.h>
-
-/* For the first run only. */
-int initialized = 0;
+#include "visibility.h"
 
 /* Agents which are actually active. */
-LIST_HEAD(em_agents);
-/* Lock for handling the agents list. */
-pthread_spinlock_t em_agents_lock;
+INTERNAL LIST_HEAD(em_agents);
+
+INTERNAL int em_core_initialize(void);
+INTERNAL int em_core_send(struct agent * a, char * msg, unsigned int size);
+INTERNAL int em_core_release_agent(struct agent * a);
+
+/******************************************************************************
+ * Atomic access for critical sections                                        *
+ ******************************************************************************/
+
+/* Lock used for ONLY initialization */
+INTERNAL pthread_mutex_t    em_init_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Holds the lock to access initialization procedure. */
+#define em_lock_init        pthread_mutex_lock(&em_init_lock)
+
+/* Relinquishes the lock to access initialization procedure */
+#define em_unlock_init      pthread_mutex_unlock(&em_init_lock)
+
+/* Lock protecting critical sections between agents. This is used only when
+ * calling procedures that needs to iterate between different instances of
+ * agents.
+ */
+INTERNAL pthread_spinlock_t em_agents_lock;
+
+/* Identifies if the core has been initialized or not */
+INTERNAL int                em_initialized = 0;
+
+/* Holds the lock to access agent. This procedure may sleep while waiting for
+ * lock to be released.
+ */
+#define em_lock_agents      pthread_spin_lock(&em_agents_lock)
+
+/* Relinquishes the lock to access agent */
+#define em_unlock_agents    pthread_spin_unlock(&em_agents_lock)
 
 /******************************************************************************
  * Misc.                                                                      *
  ******************************************************************************/
 
-/* Schedule the send of a message. */
-int add_send_job(struct agent * a, char * msg, unsigned int size)
+/* Schedule a job in the agent scheduling subsystem that has to send some data
+ * to the connected controller. This allows to be coherent with the existing
+ * message handling architecture
+ */
+INTERNAL
+int
+em_core_send(struct agent * a, char * msg, unsigned int size)
 {
-	char * buf;
-	struct sched_job * s = 0;
-
-	int status = -1;
+	char *             buf;
+	struct sched_job * s      = 0;
+	int                status = -1;
 
 	s = malloc(sizeof(struct sched_job));
 
 	if(!s) {
-		EMLOG("No more memory!");
+		EMLOG(a, "No more memory for new jobs!\n");
 		return -1;
 	}
 
 	buf = malloc(sizeof(char) * size);
 
 	if(!buf) {
-		EMLOG("No more memory!");
+		EMLOG(a, "No more memory for new buffers!\n");
 
 		free(s);
 		return -1;
@@ -89,281 +108,371 @@ int add_send_job(struct agent * a, char * msg, unsigned int size)
 	s->type       = JOB_TYPE_SEND;
 	s->reschedule = 0;
 
-	status = sched_add_job(s, &a->sched);
+	status = em_sched_add_job(s, &a->sched);
 
 	/* Some error occurs?*/
 	if(status) {
+		EMLOG(a, "Cannot schedule send, error %d\n", status);
+
 		free(buf);
 		free(s);
 	}
 
+	EMDBG(a, "Core queued new send job\n");
+
 	return status;
 }
 
-int em_has_trigger(int enb_id, int tid)
+
+/* Perform 'one-time only' duties that are necessary before allocate, use or
+ * remove agents instances into the core system. Such duties can be
+ * initialization, allocation or ordering of specific resources.
+ */
+INTERNAL
+int
+__critical
+em_core_initialize(void)
 {
-	struct agent * a = 0;
-
-	int found = 0;
-	struct trigger * t = 0;
-
-	pthread_spin_lock(&em_agents_lock);
-	list_for_each_entry(a, &em_agents, next) {
-		if(a->b_id == enb_id) {
-			t = tr_has_trigger(&a->trig, tid);
-			break;
-		}
+	if(em_initialized) {
+		return 0;
 	}
-	pthread_spin_unlock(&em_agents_lock);
 
-	return t ? 1 : 0;
-}
+	/*
+	 *
+	 * Add here initialization/allocation that MUST be done before using the
+	 * core system. This will be run just once.
+	 *
+	 */
 
-int em_is_connected(int enb_id)
-{
-	struct agent * a = 0;
-	int found = 0;
+	/* Initialize the logging subsystem */
+	em_log_init();
 
-	pthread_spin_lock(&em_agents_lock);
-	list_for_each_entry(a, &em_agents, next) {
-		if(a->b_id == enb_id) {
-			/* 1/0 evaluation operation. */
-			found = (a->net.status == EM_STATUS_CONNECTED);
-			break;
-		}
-	}
-	pthread_spin_unlock(&em_agents_lock);
+	/* Initialize ONCE the agents lock! */
+	pthread_spin_init(&em_agents_lock, 0);
 
-	return found;
-}
+	em_initialized = 1;
 
-int em_init(void)
-{
-	if(!initialized) {
-		/* Initialize locking. */
-		pthread_spin_init(&em_agents_lock, 0);
-
-		/* Don't perform initialization again. */
-		initialized = 1;
-	}
+	EMCLOG("Core initialized; starting operations...\n");
 
 	return 0;
 }
 
-int em_release_agent(struct agent * a)
+/* Releases the resources of an agent AFTER the agent subsystems have been
+ * finalized and released.
+ */
+INTERNAL
+int
+em_core_release_agent(struct agent * a)
 {
+	em_sched_stop(&a->sched);
+	em_net_stop(&a->net);
+
+	em_tr_flush(&a->trig);
+	pthread_spin_destroy(&a->trig.lock);
+
+	EMDBG(a, "Agent released\n");
+
 	free(a);
 
 	return 0;
 }
 
-int em_send(int enb_id, char * msg, unsigned int size) {
-	struct agent * a = 0;
+/******************************************************************************
+ * Public API implementation                                                  *
+ ******************************************************************************/
 
-	int found  = 0;
-	int status = -1;
+/* Returns [true/false] depending on the presence of a certain trigger id inside
+ * the trigger context of that agent.
+ */
+EMAGE_API
+int
+em_has_trigger(int enb_id, int tid)
+{
+	struct agent *   a = 0;
+	struct trigger * t = 0;
 
-	pthread_spin_lock(&em_agents_lock);
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
 	list_for_each_entry(a, &em_agents, next) {
-		if(a->b_id == enb_id) {
-			status = add_send_job(a, msg, size);
-
+		if(a->enb_id == enb_id) {
+			t = em_tr_find(&a->trig, tid);
 			break;
 		}
 	}
-	pthread_spin_unlock(&em_agents_lock);
+
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+	return t ? 1 : 0;
+}
+
+/* Returns [true/false] depending on the state of the agent network context */
+EMAGE_API
+int
+em_is_connected(int enb_id)
+{
+	struct agent * a = 0;
+	int            f = 0; /* Found? */
+
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
+	list_for_each_entry(a, &em_agents, next) {
+		if(a->enb_id == enb_id) {
+			f = (a->net.status == EM_STATUS_CONNECTED);
+			break;
+		}
+	}
+
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+	return f;
+}
+
+/* Send a single message to the agent controller */
+EMAGE_API
+int
+em_send(int enb_id, char * msg, unsigned int size)
+{
+	struct agent *  a      = 0;
+	int             status = -1; /* Failed by default */
+
+	/* Don't accept invalid buffers! */
+	if(!msg) {
+		EMCLOG("ERROR: Trying to send buffer %p\n", msg);
+		return -1;
+	}
+
+	/* Don't accept 0 length messages! */
+	if(!size) {
+		EMCLOG("ERROR: Trying to send buffer with size %d\n", size);
+		return -1;
+	}
+
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
+	list_for_each_entry(a, &em_agents, next) {
+		if(a->enb_id == enb_id) {
+			status = em_core_send(a, msg, size);
+			break;
+		}
+	}
+
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
 
 	return status;
 }
 
-int em_terminate_agent(int b_id)
+/* Find and terminate a single agent, releasing all its resources */
+EMAGE_API
+int
+em_terminate_agent(int enb_id)
 {
 	struct agent * a = 0;
 	struct agent * b = 0;
 
-	int found = 0;
-	int status = 0;
+	int            f = 0;	/* Found? */
+	int            s = 0;	/* Status */
 
-	pthread_spin_lock(&em_agents_lock);
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
 	list_for_each_entry_safe(a, b, &em_agents, next) {
-		if(a->b_id == b_id) {
+		if(a->enb_id == enb_id) {
 			list_del(&a->next);
-			found = 1;
+			f = 1;
 			break;
 		}
 	}
-	pthread_spin_unlock(&em_agents_lock);
 
-	if(found) {
-		if(a->ops->release) {
-			status = a->ops->release();
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+	if(f) {
+		if(a->ops && a->ops->release) {
+			s = a->ops->release();
 		}
 
-		tr_flush(&a->trig);
-		pthread_spin_destroy(&a->trig.lock);
+		EMDBG(a, "Releasing agent\n");
 
-		net_stop(&a->net);
-		sched_stop(&a->sched);
-
-		EMDBG("Releasing agent for base station %d", a->b_id);
-		em_release_agent(a);
+		em_core_release_agent(a);
 	}
 
-	return status;
+	return s;
 }
 
-/******************************************************************************
- * Entry/exit points for the Agent.                                           *
- ******************************************************************************/
-
-int em_start(
-	int                   b_id,
+/* Create and starts a new agent instance, by feeding operations and controller
+ * endpoint to contact.
+ */
+EMAGE_API
+int
+em_start(
+	int                   enb_id,
 	struct em_agent_ops * ops,
 	char *                ctrl_addr,
 	unsigned short        ctrl_port)
 {
 	struct agent * a = 0;
+	struct agent * f = 0;
 
-	int status = 0;
-	int running = 0;	/* Already running? */
-	int nm = 0;		/* No mem? */
+	int            s  = 0;  /* Status */
+	int            r  = 0;  /* Already running? */
+	int            nm = 0;  /* No mem? */
 
-	if(em_init()) {
-		return -1;
-	}
+/****** Start of the critical section *****************************************/
+	em_lock_init;
+	em_core_initialize();
+	em_unlock_init;
+/****** End of the critical section *******************************************/
 
 	/* Any check for necessary call-backs here. For the moment you can also
 	 * implement no call-backs: your agent will simply do nothing.
 	 */
 	if(!ops) {
-		EMLOG("Invalid set of operations...");
+		EMCLOG("Invalid set of operations for agent, ops=%p\n", ops);
 		return -1;
 	}
 
-	pthread_spin_lock(&em_agents_lock);
-	/* Find for an already present agent */
-	list_for_each_entry(a, &em_agents, next) {
-		if(a->b_id == b_id) {
-			running = 1;
+	a = malloc(sizeof(struct agent));
+
+	if(!a) {
+		EMCLOG("Not enough memory for new agent!\n");
+		return -1;
+	}
+
+	/* Initialize the initial agent resources */
+	memset(a, 0, sizeof(struct agent));
+
+	INIT_LIST_HEAD(&a->next);
+
+	a->enb_id = enb_id;
+	a->init   = 1;          /* The agent is initializing... */
+
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
+	/* Find if an agent with the same id is already there */
+	list_for_each_entry(f, &em_agents, next) {
+		if(f->enb_id == enb_id) {
+			r = 1;
 			break;
 		}
 	}
 
-	if(!running) {
-		a = malloc(sizeof(struct agent));
-
-		if(a) {
-			memset(a, 0, sizeof(struct agent));
-			INIT_LIST_HEAD(&a->next);
-			a->b_id = b_id;
-
-			list_add(&a->next, &em_agents);
-		} else {
-			nm = 1;
-		}
-
+	/* If not present, add to the list to avoid insertion of copies while
+	 * initializing the agent subsystems.
+	 */
+	if(!r) {
+		list_add(&a->next, &em_agents);
 	}
-	pthread_spin_unlock(&em_agents_lock);
 
-	if(running) {
-		EMLOG("Agent for base station %d is already running...",
-			b_id);
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
 
+	if(r) {
+		EMCLOG("Agent for eNB %d is already running...\n", enb_id);
 		return -1;
 	}
-
-	if(nm) {
-		EMLOG("Not enough memory!");
-		return -1;
-	}
-
-	EMDBG("New agent for %d created", b_id);
 
 	memcpy(a->net.addr, ctrl_addr, strlen(ctrl_addr));
-	a->net.port = ctrl_port;
-	a->ops = ops;
+	a->net.port  = ctrl_port;
+	a->ops       = ops;
 
+	/* Trigger initialization... Not in em_tr_init? */
 	a->trig.next = 1;
+
 	pthread_spin_init(&a->trig.lock, 0);
 	INIT_LIST_HEAD(&a->trig.ts);
 
-	if (a->ops->init) {
-		status = a->ops->init();
+	/*
+	 * Start this agent scheduler subsystem:
+	 */
+
+	if(em_sched_start(&a->sched)) {
+		EMCLOG("Failed to start agent %d scheduler context\n", enb_id);
+		s = -1;
+
+		goto err;
+	}
+
+	/*
+	 * Start this agent network subsystem:
+	 */
+
+	if(em_net_start(&a->net)) {
+		EMCLOG("Failed to start agent %d network context\n", enb_id);
+		s = -1;
+
+		goto err;
+	}
+
+	/* Initialization steps finished, and agent ready to be used! */
+	a->init = 0;
+
+	/* Custom initialization when everything seems ready */
+	if (a->ops && a->ops->init) {
+		/* Invoke custom initialization */
+		s = a->ops->init();
 
 		/* On error, do not launch the agent */
-		if (status < 0) {
-			EMLOG("Custom initialization failed with error %d",
-				status);
+		if (s < 0) {
+			EMCLOG("Custom initialization for agent %d failed with "
+				"error %d", enb_id, s);
 
-			pthread_spin_lock(&em_agents_lock);
-			list_del(&a->next);
-			pthread_spin_unlock(&em_agents_lock);
-
-			em_release_agent(a);
-
-			return status;
+			goto err;
 		}
 	}
 
-	/*
-	 * Start this agent scheduler
-	 */
-
-	if(sched_start(&a->sched)) {
-		pthread_spin_lock(&em_agents_lock);
-		list_del(&a->next);
-		pthread_spin_unlock(&em_agents_lock);
-
-		EMLOG("Failed to create the agent scheduler thread.");
-		em_release_agent(a);
-
-		return -1;
-	}
-
-	/*
-	 * Start this agent networking operations
-	 */
-
-	if(net_start(&a->net)) {
-		pthread_spin_lock(&em_agents_lock);
-		list_del(&a->next);
-		pthread_spin_unlock(&em_agents_lock);
-
-		EMLOG("Failed to create the listener agent thread.");
-		sched_stop(&a->sched);
-		em_release_agent(a);
-
-		return -1;
-	}
+	EMDBG(a, "Agent initialization finished\n");
 
 	return 0;
+
+/* Remove the agent from the list and destroy it in case of error */
+err:
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+	list_del(&a->next);
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+	em_core_release_agent(a);
+
+	return s;
 }
 
-int em_stop(void)
+/* Stop the entire core, destroying all the running agents */
+EMAGE_API
+int
+em_stop(void)
 {
 	struct agent * a = 0;
 
+	/* Loop until all the agents are released... */
 	while(!list_empty(&em_agents)) {
-		pthread_spin_lock(&em_agents_lock);
+/****** Start of the critical section *****************************************/
+		em_lock_agents;
+
 		a = list_first_entry(&em_agents, struct agent, next);
 		list_del(&a->next);
-		pthread_spin_unlock(&em_agents_lock);
 
-		if(a->ops->release) {
+		em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+		if(a->ops && a->ops->release) {
 			a->ops->release();
 		}
 
-		tr_flush(&a->trig);
-		pthread_spin_destroy(&a->trig.lock);
-
-		net_stop(&a->net);
-		sched_stop(&a->sched);
-
-		EMDBG("Releasing agent for base station %d", a->b_id);
-		em_release_agent(a);
+		em_core_release_agent(a);
 	}
 
-	EMLOG("Shut down...");
+	EMCLOG("Shut down...");
+
+	/* Close the logging utilities */
+	em_log_release();
 
 	return 0;
 }

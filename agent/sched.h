@@ -24,6 +24,7 @@
 #include <pthread.h>
 
 #include "emlist.h"
+#include "visibility.h"
 
 /* Possible types of jobs to issue in the scheduler */
 enum JOB_TYPES {
@@ -86,19 +87,21 @@ struct sched_context {
 };
 
 /* Adds a job to a scheduler context */
-int sched_add_job(struct sched_job * job, struct sched_context * sched);
+INTERNAL int em_sched_add_job(
+	struct sched_job * job, struct sched_context * sched);
 
-/* find a precise job inside the scheduler */
-struct sched_job * sched_find_job(
+/* Find and return the job instance with matching id and type */
+INTERNAL struct sched_job * em_sched_find_job(
 	struct sched_context * sched, unsigned int id, int type);
 
 /* Release a job which is currently scheduled by using the associated id */
-int sched_remove_job(unsigned int id, int type, struct sched_context * sched);
+INTERNAL int em_sched_remove_job(
+	unsigned int id, int type, struct sched_context * sched);
 
 /* Correctly start a new scheduler in it's own context */
-int sched_start(struct sched_context * sched);
+INTERNAL int em_sched_start(struct sched_context * sched);
 
 /* Stop a scheduler */
-int sched_stop(struct sched_context * sched);
+INTERNAL int em_sched_stop(struct sched_context * sched);
 
 #endif /* __EMAGE_SCHEDULER_H */
