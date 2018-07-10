@@ -99,7 +99,7 @@ em_sched_perform_cell_setup(struct agent * a, struct sched_job * job)
 	uint16_t pci = 0;
 	uint32_t mod = 0;
 
-	if(epp_head((char *)job->args, job->size, 0, 0, &pci, &mod)) {
+	if(epp_head((char *)job->args, job->size, 0, 0, &pci, &mod, 0)) {
 		return 0;
 	}
 
@@ -119,7 +119,7 @@ em_sched_perform_enb_setup(struct agent * a, struct sched_job * job)
 {
 	uint32_t mod = 0;
 
-	if(epp_head((char *)job->args, job->size, 0, 0, 0, &mod)) {
+	if(epp_head((char *)job->args, job->size, 0, 0, 0, &mod, 0)) {
 		EMLOG(a, "Cannot parse cell id in Cell setup\n");
 		return 0;
 	}
@@ -145,7 +145,7 @@ em_sched_perform_ho(struct agent * a, struct sched_job * job)
 	uint16_t tcell = 0;
 	uint8_t  cause = 0;
 
-	if(epp_head((char *)job->args, job->size, 0, 0, &scell, &mod)) {
+	if(epp_head((char *)job->args, job->size, 0, 0, &scell, &mod, 0)) {
 		return 0;
 	}
 
@@ -277,12 +277,12 @@ em_sched_perform_ran_setup(struct agent * a, struct sched_job * job)
 {
 	uint32_t mod = 0;
 	
-	epp_head(job->args, job->size, 0, 0, 0, &mod);
+	epp_head(job->args, job->size, 0, 0, 0, &mod, 0);
 
 	EMDBG(a, "Performing a RAN Setup job\n");
 
-	if (a->ops && a->ops->ran_setup_request) {
-		a->ops->ran_setup_request(mod);
+	if (a->ops && a->ops->ran.setup_request) {
+		a->ops->ran.setup_request(mod);
 	}
 
 	return JOB_CONSUMED;
@@ -305,7 +305,7 @@ em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
 		return JOB_CONSUMED;
 	}
 
-	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	epp_head(job->args, job->size, &type, 0, 0, &mod, 0);
 	act = epp_single_type(job->args, job->size);
 	op  = epp_single_op(job->args, job->size);
 
@@ -315,23 +315,23 @@ em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
 	switch (op) {
 	/* A request */
 	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran_user_request) {
+		if (a->ops->ran.user_request) {
 			epp_single_ran_usr_req(job->args, job->size, &udet.id);
-			a->ops->ran_user_request(mod, udet.id);
+			a->ops->ran.user_request(mod, udet.id);
 		}
 		break;
 	/* An addition */
 	case EP_OPERATION_ADD:
-		if (a->ops->ran_user_add) {
+		if (a->ops->ran.user_add) {
 			epp_single_ran_usr_add(job->args, job->size, &udet);
-			a->ops->ran_user_add(mod, udet.id, udet.tenant);
+			a->ops->ran.user_add(mod, udet.id, udet.tenant);
 		}
 		break;
 	/* A remove */
 	case EP_OPERATION_REM:
-		if (a->ops->ran_user_rem) {
+		if (a->ops->ran.user_rem) {
 			epp_single_ran_usr_rem(job->args, job->size, &udet);
-			a->ops->ran_user_rem(mod, udet.id);
+			a->ops->ran.user_rem(mod, udet.id);
 		}
 		break;
 	}
@@ -356,7 +356,7 @@ em_sched_perform_ran_tenant(struct agent * a, struct sched_job * job)
 		return JOB_CONSUMED;
 	}
 
-	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	epp_head(job->args, job->size, &type, 0, 0, &mod, 0);
 	act = epp_single_type(job->args, job->size);
 	op  = epp_single_op(job->args, job->size);
 
@@ -366,23 +366,23 @@ em_sched_perform_ran_tenant(struct agent * a, struct sched_job * job)
 	switch (op) {
 		/* A request */
 	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran_tenant_request) {
+		if (a->ops->ran.tenant_request) {
 			epp_single_ran_ten_req(job->args, job->size, &tdet);
-			a->ops->ran_tenant_request(mod, tdet.id);
+			a->ops->ran.tenant_request(mod, tdet.id);
 		}
 		break;
 	/* An addition */
 	case EP_OPERATION_ADD:
-		if (a->ops->ran_tenant_add) {
+		if (a->ops->ran.tenant_add) {
 			epp_single_ran_ten_add(job->args, job->size, &tdet);
-			a->ops->ran_tenant_add(mod, tdet.id, tdet.sched);
+			a->ops->ran.tenant_add(mod, tdet.id, tdet.sched);
 		}
 		break;
 	/* A remove */
 	case EP_OPERATION_REM:
-		if (a->ops->ran_tenant_rem) {
+		if (a->ops->ran.tenant_rem) {
 			epp_single_ran_ten_rem(job->args, job->size, &tdet);
-			a->ops->ran_tenant_rem(mod, tdet.id);
+			a->ops->ran.tenant_rem(mod, tdet.id);
 		}
 		break;
 	}
@@ -409,7 +409,7 @@ em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
 		return JOB_CONSUMED;
 	}
 
-	epp_head(job->args, job->size, &type, 0, 0, &mod);
+	epp_head(job->args, job->size, &type, 0, 0, &mod, 0);
 	act = epp_single_type(job->args, job->size);
 	op  = epp_single_op(job->args, job->size);
 
@@ -419,11 +419,11 @@ em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
 	switch (op) {
 	/* A request of parameter status */
 	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran_sched_get_parameter) {
+		if (a->ops->ran.sched_get_parameter) {
 			epp_single_ran_sch_req(
 				job->args, job->size, &id, &ten, &par);
 
-			a->ops->ran_sched_get_parameter(
+			a->ops->ran.sched_get_parameter(
 				mod, 
 				id, 
 				ten == 0 ? 
@@ -435,11 +435,11 @@ em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
 		break;
 	/* A set of parameter status */
 	case EP_OPERATION_SET:
-		if (a->ops->ran_sched_set_parameter) {
+		if (a->ops->ran.sched_set_parameter) {
 			epp_single_ran_sch_set(
 				job->args, job->size, &id, &ten, &par);
 
-			a->ops->ran_sched_set_parameter(
+			a->ops->ran.sched_set_parameter(
 				mod,
 				id,
 				ten == 0 ?

@@ -29,6 +29,85 @@ extern "C"
 
 #include <emage/emproto.h>
 
+/*
+ *Radio Access Network(RAN) sharing related procedures:
+ */
+struct em_RAN_ops {
+	/* Informs the wrapper that the controller requested to report the 
+	 * status of the RAN mechanism.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* setup_request) (uint32_t mod);
+
+	/* Informs the wrapper that the controller requested to report the 
+	 * status of a specific RAN user.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* user_request) (uint32_t mod, uint16_t rnti);
+
+	/* Informs the wrapper that the controller requested to add a new
+	 * user-tenant association.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* user_add) (uint32_t mod, uint16_t rnti, uint64_t tenant);
+
+	/* Informs the wrapper that the controller requested to remove an
+	 * existing user association with a tenant.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* user_rem) (uint32_t mod, uint16_t rnti);
+
+	/* Informs the wrapper that the controller requested to report the
+	 * current status of a specific tenant.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* tenant_request) (uint32_t mod, uint64_t tenant);
+
+	/* Informs the wrapper that the controller requested to add a new tenant
+	 * within the RAN subsystem. During the association also the tenant 
+	 * scheduler for its users is specified.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* tenant_add) (uint32_t mod, uint64_t tenant, uint32_t sched);
+
+	/* Informs the wrapper that the controller requested to remove an 
+	 * existing tenant from RAN subsystem.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* tenant_rem) (uint32_t mod, uint64_t tenant);
+
+	/* Informs the wrapper that the controller requested to retrieve a
+	 * parameter of a specific scheduler within RAN subsystems.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* sched_get_parameter) (
+		uint32_t            mod,
+		uint32_t            id,
+		uint8_t             type,
+		uint64_t            tenant,
+		ep_ran_sparam_det * param);
+
+	/* Informs the wrapper that the controller requested to set a
+	 * parameter for a specific scheduler within RAN subsystems.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* sched_set_parameter) (
+		uint32_t            mod,
+		uint32_t            id,
+		uint8_t             type,
+		uint64_t            tenant,
+		ep_ran_sparam_det * param);
+};
+
 /* Defines the operations that can be customized depending on the technology
  * where you want to embed the agent to. Such procedures will be called by the
  * agent main logic while responding to the controller orders or events
@@ -44,7 +123,7 @@ struct em_agent_ops {
 	 */
 	int (* init) (void);
 
-	/* Perform custom initialization for the technology abstraction layer.
+	/* Perform custom releasing for the technology abstraction layer.
 	 * Regardless of error returns codes, the agent will be stopped.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
@@ -131,83 +210,10 @@ struct em_agent_ops {
 	 */
 	int (* mac_report) (uint32_t mod, int32_t interval, int trig_id);
 
-        /*
-         * Radio Access Network(RAN) sharing related procedures:
-         */
-
-	/* Informs the wrapper that the controller requested to report the 
-	 * status of the RAN mechanism.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
+	/* Bunch of Radio Access Network operations that allows to customize the
+	 * slicing within the wrapper logic.
 	 */
-	int (* ran_setup_request) (uint32_t mod);
-
-	/* Informs the wrapper that the controller requested to report the 
-	 * status of a specific RAN user.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_user_request) (uint32_t mod, uint16_t rnti);
-
-	/* Informs the wrapper that the controller requested to add a new
-	 * user-tenant association.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_user_add) (uint32_t mod, uint16_t rnti, uint64_t tenant);
-
-	/* Informs the wrapper that the controller requested to remove an
-	 * existing user association with a tenant.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_user_rem) (uint32_t mod, uint16_t rnti);
-
-	/* Informs the wrapper that the controller requested to report the
-	 * current status of a specific tenant.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_tenant_request) (uint32_t mod, uint64_t tenant);
-
-	/* Informs the wrapper that the controller requested to add a new tenant
-	 * within the RAN subsystem. During the association also the tenant 
-	 * scheduler for its users is specified.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_tenant_add) (uint32_t mod, uint64_t tenant, uint32_t sched);
-
-	/* Informs the wrapper that the controller requested to remove an 
-	 * existing tenant from RAN subsystem.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_tenant_rem) (uint32_t mod, uint64_t tenant);
-
-	/* Informs the wrapper that the controller requested to retrieve a
-	 * parameter of a specific scheduler within RAN subsystems.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_sched_get_parameter) (
-		uint32_t            mod,
-		uint32_t            id,
-		uint8_t             type,
-		uint64_t            tenant,
-		ep_ran_sparam_det * param);
-
-	/* Informs the wrapper that the controller requested to set a
-	 * parameter for a specific scheduler within RAN subsystems.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* ran_sched_set_parameter) (
-		uint32_t            mod,
-		uint32_t            id,
-		uint8_t             type,
-		uint64_t            tenant,
-		ep_ran_sparam_det * param);
+	struct em_RAN_ops ran;
 };
 
 /* Peek the triggers of the given agent and check if a trigger is enabled or

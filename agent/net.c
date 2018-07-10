@@ -464,7 +464,7 @@ em_net_te_ue_measure(struct net_context * net, char * msg, int size)
 	struct trigger * t;
 	struct agent *   a = container_of(net, struct agent, net);
 
-	epp_head(msg, size, 0, 0, 0, &mod);
+	epp_head(msg, size, 0, 0, 0, &mod, 0);
 
 	seq = epp_seq(msg, size);
 	op  = epp_trigger_op(msg, size);
@@ -503,7 +503,7 @@ em_net_te_ue_report(struct net_context * net, char * msg, int size)
 	struct trigger * t;
 	struct agent *   a = container_of(net, struct agent, net);
 
-	epp_head(msg, size, 0, 0, 0, &mod);
+	epp_head(msg, size, 0, 0, 0, &mod, 0);
 
 	seq = epp_seq(msg, size);
 	op  = epp_trigger_op(msg, size);
@@ -539,7 +539,7 @@ em_net_te_mac_report(struct net_context * net, char * msg, int size)
 	struct trigger * t;
 	struct agent *   a = container_of(net, struct agent, net);
 
-	epp_head(msg, size, 0, 0, 0, &mod);
+	epp_head(msg, size, 0, 0, 0, &mod, 0);
 
 	seq = epp_seq(msg, size);
 	op  = epp_trigger_op(msg, size);
@@ -585,7 +585,7 @@ em_net_process_sched_event(
 
 	switch(s) {
 	case EP_ACT_HELLO:
-		if(epp_schedule_dir(msg, size) == EP_DIR_REPLY) {
+		if(epp_dir(msg, size) == EP_HDR_FLAG_DIR_REP) {
 			return em_net_sc_hello(net, msg, size);
 		}
 		break;
@@ -619,37 +619,37 @@ em_net_process_single_event(
 		/* Do nothing */
 		break;
 	case EP_ACT_ECAP:
-		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+		if(epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
 			return em_net_se_enb_setup(net, msg, size);
 		}
 		break;
 	case EP_ACT_CCAP:
-		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+		if(epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
 			return em_net_se_cell_setup(net, msg, size);
 		}
 		break;
 	case EP_ACT_HANDOVER:
-		if(epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+		if(epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
 			return em_net_se_ho(net, msg, size);
 		}
 		break;
         case EP_ACT_RAN_SETUP:
-                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_rans(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_TENANT:
-                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_rant(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_USER:
-                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_ranu(net, msg, size);
                 }
                 break;
         case EP_ACT_RAN_SCHED:
-                if (epp_single_dir(msg, size) == EP_DIR_REQUEST) {
+                if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_ranc(net, msg, size);
                 }
                 break;
@@ -679,9 +679,6 @@ em_net_process_trigger_event(
 	}
 
 	switch(t) {
-	case EP_ACT_HELLO:
-		/* Don't really care about the hello reply now */
-		break;
 	case EP_ACT_UE_REPORT:
 		return em_net_te_ue_report(net, msg, size);
 	case EP_ACT_UE_MEASURE:

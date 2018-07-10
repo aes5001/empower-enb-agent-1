@@ -20,6 +20,8 @@
 #ifndef __EMAGE_TRIGGERS_H
 #define __EMAGE_TRIGGERS_H
 
+#include <pthread.h>
+
 #include "emlist.h"
 #include "visibility.h"
 
