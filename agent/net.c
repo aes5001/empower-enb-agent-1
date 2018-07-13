@@ -406,7 +406,7 @@ em_net_se_rans(struct net_context * net, char * msg, int size)
         return em_net_sched_job(a, seq, JOB_TYPE_RAN_SETUP, 1, 0, msg, size);
 }
 
-/* Handle a single event RAN Tenant message */
+/* Handle a single event RAN slice message */
 INTERNAL
 int
 em_net_se_rant(struct net_context * net, char * msg, int size)
@@ -416,9 +416,9 @@ em_net_se_rant(struct net_context * net, char * msg, int size)
 
         seq = epp_seq(msg, size);
 
-        EMDBG(a, "Network processing RAN Tenant, seq=%u\n", seq);
+        EMDBG(a, "Network processing RAN slice, seq=%u\n", seq);
 
-        return em_net_sched_job(a, seq, JOB_TYPE_RAN_TENANT, 1, 0, msg, size);
+        return em_net_sched_job(a, seq, JOB_TYPE_RAN_SLICE, 1, 0, msg, size);
 }
 
 /* Handle a single event RAN User message */
@@ -638,7 +638,7 @@ em_net_process_single_event(
                         return em_net_se_rans(net, msg, size);
                 }
                 break;
-        case EP_ACT_RAN_TENANT:
+        case EP_ACT_RAN_SLICE:
                 if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_rant(net, msg, size);
                 }

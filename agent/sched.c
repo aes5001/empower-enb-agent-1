@@ -324,7 +324,7 @@ em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
 	case EP_OPERATION_ADD:
 		if (a->ops->ran.user_add) {
 			epp_single_ran_usr_add(job->args, job->size, &udet);
-			a->ops->ran.user_add(mod, udet.id, udet.tenant);
+			a->ops->ran.user_add(mod, udet.id, udet.slice);
 		}
 		break;
 	/* A remove */
@@ -339,17 +339,17 @@ em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
 	return JOB_CONSUMED;
 }
 
-/* Execute a RAN Tenant job */
+/* Execute a RAN slice job */
 INTERNAL
 int
-em_sched_perform_ran_tenant(struct agent * a, struct sched_job * job)
+em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 {
 	ep_msg_type       type = 0;
 	ep_act_type       act  = 0;
 	ep_op_type        op   = 0;
 	uint32_t          mod  = 0;
 
-	ep_ran_tenant_det tdet;
+	ep_ran_slice_det tdet;
 
 	/* If no operations are there, dont perform any other job. */
 	if (!a->ops) {
@@ -360,29 +360,29 @@ em_sched_perform_ran_tenant(struct agent * a, struct sched_job * job)
 	act = epp_single_type(job->args, job->size);
 	op  = epp_single_op(job->args, job->size);
 
-	EMDBG(a, "Performing a RAN Tenant job\n");
+	EMDBG(a, "Performing a RAN slice job\n");
 
 	/* Depending on the operation requested, call the correct callback */
 	switch (op) {
 		/* A request */
 	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran.tenant_request) {
+		if (a->ops->ran.slice_request) {
 			epp_single_ran_ten_req(job->args, job->size, &tdet);
-			a->ops->ran.tenant_request(mod, tdet.id);
+			a->ops->ran.slice_request(mod, tdet.id);
 		}
 		break;
 	/* An addition */
 	case EP_OPERATION_ADD:
-		if (a->ops->ran.tenant_add) {
+		if (a->ops->ran.slice_add) {
 			epp_single_ran_ten_add(job->args, job->size, &tdet);
-			a->ops->ran.tenant_add(mod, tdet.id, tdet.sched);
+			a->ops->ran.slice_add(mod, tdet.id, tdet.sched);
 		}
 		break;
 	/* A remove */
 	case EP_OPERATION_REM:
-		if (a->ops->ran.tenant_rem) {
+		if (a->ops->ran.slice_rem) {
 			epp_single_ran_ten_rem(job->args, job->size, &tdet);
-			a->ops->ran.tenant_rem(mod, tdet.id);
+			a->ops->ran.slice_rem(mod, tdet.id);
 		}
 		break;
 	}
@@ -427,7 +427,7 @@ em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
 				mod, 
 				id, 
 				ten == 0 ? 
-					EP_RAN_SCHED_TENANT_TYPE :
+					EP_RAN_SCHED_SLICE_TYPE :
 					EP_RAN_SCHED_USER_TYPE,
 				ten,
 				&par);
@@ -443,7 +443,7 @@ em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
 				mod,
 				id,
 				ten == 0 ?
-					EP_RAN_SCHED_TENANT_TYPE :
+					EP_RAN_SCHED_SLICE_TYPE :
 					EP_RAN_SCHED_USER_TYPE,
 				ten,
 				&par);
@@ -576,8 +576,8 @@ em_sched_perform_job(
 	case JOB_TYPE_RAN_SETUP:
 		s = em_sched_perform_ran_setup(a, job);
 		break;
-	case JOB_TYPE_RAN_TENANT:
-		s = em_sched_perform_ran_tenant(a, job);
+	case JOB_TYPE_RAN_SLICE:
+		s = em_sched_perform_ran_slice(a, job);
 		break;
 	case JOB_TYPE_RAN_USER:
 		s = em_sched_perform_ran_user(a, job);

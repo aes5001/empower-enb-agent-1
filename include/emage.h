@@ -48,40 +48,40 @@ struct em_RAN_ops {
 	int (* user_request) (uint32_t mod, uint16_t rnti);
 
 	/* Informs the wrapper that the controller requested to add a new
-	 * user-tenant association.
+	 * user-slice association.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* user_add) (uint32_t mod, uint16_t rnti, uint64_t tenant);
+	int (* user_add) (uint32_t mod, uint16_t rnti, uint64_t slice);
 
 	/* Informs the wrapper that the controller requested to remove an
-	 * existing user association with a tenant.
+	 * existing user association with a slice.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
 	int (* user_rem) (uint32_t mod, uint16_t rnti);
 
 	/* Informs the wrapper that the controller requested to report the
-	 * current status of a specific tenant.
+	 * current status of a specific slice.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* tenant_request) (uint32_t mod, uint64_t tenant);
+	int (* slice_request) (uint32_t mod, uint64_t slice);
 
-	/* Informs the wrapper that the controller requested to add a new tenant
-	 * within the RAN subsystem. During the association also the tenant 
+	/* Informs the wrapper that the controller requested to add a new slice
+	 * within the RAN subsystem. During the association also the slice 
 	 * scheduler for its users is specified.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* tenant_add) (uint32_t mod, uint64_t tenant, uint32_t sched);
+	int (* slice_add) (uint32_t mod, uint64_t slice, uint32_t sched);
 
 	/* Informs the wrapper that the controller requested to remove an 
-	 * existing tenant from RAN subsystem.
+	 * existing slice from RAN subsystem.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* tenant_rem) (uint32_t mod, uint64_t tenant);
+	int (* slice_rem) (uint32_t mod, uint64_t slice);
 
 	/* Informs the wrapper that the controller requested to retrieve a
 	 * parameter of a specific scheduler within RAN subsystems.
@@ -92,7 +92,7 @@ struct em_RAN_ops {
 		uint32_t            mod,
 		uint32_t            id,
 		uint8_t             type,
-		uint64_t            tenant,
+		uint64_t            slice,
 		ep_ran_sparam_det * param);
 
 	/* Informs the wrapper that the controller requested to set a
@@ -104,7 +104,7 @@ struct em_RAN_ops {
 		uint32_t            mod,
 		uint32_t            id,
 		uint8_t             type,
-		uint64_t            tenant,
+		uint64_t            slice,
 		ep_ran_sparam_det * param);
 };
 
