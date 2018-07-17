@@ -22,6 +22,8 @@
 #ifndef __EMAGE_AGENT_H
 #define __EMAGE_AGENT_H
 
+#include <stdint.h>
+
 #include "decor.h"
 #include "err.h"
 #include "emlist.h"
@@ -39,7 +41,7 @@ struct agent {
 	struct list_head      next;
 
 	/* eNB ID  bound to this agent context */
-	int                   enb_id;
+	uint64_t              enb_id;
 	/* If set informs that the agent subsystem are not ready yet */
 	int                   init;
 

@@ -186,7 +186,7 @@ em_core_release_agent(struct agent * a)
  */
 EMAGE_API
 int
-em_has_trigger(int enb_id, int tid)
+em_has_trigger(uint64_t enb_id, int tid)
 {
 	struct agent *   a = 0;
 	struct trigger * t = 0;
@@ -210,7 +210,7 @@ em_has_trigger(int enb_id, int tid)
 /* Returns [true/false] depending on the state of the agent network context */
 EMAGE_API
 int
-em_is_connected(int enb_id)
+em_is_connected(uint64_t enb_id)
 {
 	struct agent * a = 0;
 	int            f = 0; /* Found? */
@@ -234,7 +234,7 @@ em_is_connected(int enb_id)
 /* Send a single message to the agent controller */
 EMAGE_API
 int
-em_send(int enb_id, char * msg, unsigned int size)
+em_send(uint64_t enb_id, char * msg, unsigned int size)
 {
 	struct agent *  a      = 0;
 	int             status = -1; /* Failed by default */
@@ -270,7 +270,7 @@ em_send(int enb_id, char * msg, unsigned int size)
 /* Find and terminate a single agent, releasing all its resources */
 EMAGE_API
 int
-em_terminate_agent(int enb_id)
+em_terminate_agent(uint64_t enb_id)
 {
 	struct agent * a = 0;
 	struct agent * b = 0;
@@ -311,7 +311,7 @@ em_terminate_agent(int enb_id)
 EMAGE_API
 int
 em_start(
-	int                   enb_id,
+	uint64_t              enb_id,
 	struct em_agent_ops * ops,
 	char *                ctrl_addr,
 	unsigned short        ctrl_port)

@@ -141,7 +141,7 @@ em_sched_perform_ho(struct agent * a, struct sched_job * job)
 	uint32_t mod   = 0;
 	uint16_t scell = 0;
 	uint16_t rnti  = 0;
-	uint32_t tenb  = 0;
+	uint64_t tenb  = 0;
 	uint16_t tcell = 0;
 	uint8_t  cause = 0;
 

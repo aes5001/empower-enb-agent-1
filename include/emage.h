@@ -195,7 +195,7 @@ struct em_agent_ops {
 		uint32_t mod,
 		uint16_t source_cell,
 		uint16_t rnti,
-		uint32_t target_enb,
+		uint64_t target_enb,
 		uint16_t target_cell,
 		uint8_t  cause);
 
@@ -222,13 +222,13 @@ struct em_agent_ops {
  *
  * Returns 1 if the trigger is enabled, 0 otherwise.
  */
-int em_has_trigger(int enb_id, int tid);
+int em_has_trigger(uint64_t enb_id, int tid);
 
 /* Check if the agent is currently connected to a controller.
  *
  * Returns 1 if the agent is connected to a controller, 0 otherwise.
  */
-int em_is_connected(int enb_id);
+int em_is_connected(uint64_t enb_id);
 
 /* Send a message to the connected controller, if any controller is attached.
  * This operations is only possible if the agent for that particular id has
@@ -237,7 +237,7 @@ int em_is_connected(int enb_id);
  * Returns 0 if the message is successfully sent, a negative error code
  * otherwise.
  */
-int em_send(int enb_id, char * msg, unsigned int size);
+int em_send(uint64_t enb_id, char * msg, unsigned int size);
 
 /* Start the Empower Agent logic. This will cause the agent to start interacting
  * with a remote controller or to local events. You need to pass the technology
@@ -246,7 +246,7 @@ int em_send(int enb_id, char * msg, unsigned int size);
  * Returns 0 on success, or a negative error code on failure.
  */
 int em_start(
-	int                   b_id,
+	uint64_t              b_id,
 	struct em_agent_ops * ops,
 	char *                ctrl_addr,
 	unsigned short        ctrl_port);
@@ -262,7 +262,7 @@ int em_stop(void);
  *
  * Always returns 0.
  */
-int em_terminate_agent(int b_id);
+int em_terminate_agent(uint64_t b_id);
 
 #ifdef __cplusplus
 }
