@@ -331,7 +331,7 @@ em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
 	case EP_OPERATION_REM:
 		if (a->ops->ran.user_rem) {
 			epp_single_ran_usr_rem(job->args, job->size, &udet);
-			a->ops->ran.user_rem(mod, udet.id);
+			a->ops->ran.user_rem(mod, udet.id, udet.slice);
 		}
 		break;
 	}
@@ -349,6 +349,7 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 	ep_op_type        op   = 0;
 	uint32_t          mod  = 0;
 
+	uint64_t         id;
 	ep_ran_slice_det tdet;
 
 	/* If no operations are there, dont perform any other job. */
@@ -367,88 +368,28 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 		/* A request */
 	case EP_OPERATION_UNSPECIFIED:
 		if (a->ops->ran.slice_request) {
-			epp_single_ran_ten_req(job->args, job->size, &tdet);
-			a->ops->ran.slice_request(mod, tdet.id);
+			epp_single_ran_slice_req(job->args, job->size, &id);
+			a->ops->ran.slice_request(mod, id);
 		}
 		break;
 	/* An addition */
 	case EP_OPERATION_ADD:
 		if (a->ops->ran.slice_add) {
-			epp_single_ran_ten_add(job->args, job->size, &tdet);
-			a->ops->ran.slice_add(mod, tdet.id, tdet.sched);
+			epp_single_ran_slice_add(
+				job->args, 
+				job->size, 
+				&id,
+				&tdet);
+				
+			a->ops->ran.slice_add(mod, id, &tdet);
 		}
 		break;
 	/* A remove */
 	case EP_OPERATION_REM:
 		if (a->ops->ran.slice_rem) {
-			epp_single_ran_ten_rem(job->args, job->size, &tdet);
-			a->ops->ran.slice_rem(mod, tdet.id);
+			epp_single_ran_slice_rem(job->args, job->size, &id);
+			a->ops->ran.slice_rem(mod, id);
 		}
-		break;
-	}
-
-	return JOB_CONSUMED;
-}
-
-/* Perform a RAN Scheduler job */
-INTERNAL
-int
-em_sched_perform_ran_scheduler(struct agent * a, struct sched_job * job)
-{
-	ep_msg_type       type = 0;
-	ep_act_type       act  = 0;
-	ep_op_type        op   = 0;
-	uint32_t          mod  = 0;
-
-	uint32_t          id   = 0;
-	uint64_t          ten  = 0;
-	ep_ran_sparam_det par;
-
-	/* If no operations are there, dont perform any other job. */
-	if (!a->ops) {
-		return JOB_CONSUMED;
-	}
-
-	epp_head(job->args, job->size, &type, 0, 0, &mod, 0);
-	act = epp_single_type(job->args, job->size);
-	op  = epp_single_op(job->args, job->size);
-
-	EMDBG(a, "Performing a RAN Scheduler job\n");
-
-	/* Depending on the operation requested, call the correct callback */
-	switch (op) {
-	/* A request of parameter status */
-	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran.sched_get_parameter) {
-			epp_single_ran_sch_req(
-				job->args, job->size, &id, &ten, &par);
-
-			a->ops->ran.sched_get_parameter(
-				mod, 
-				id, 
-				ten == 0 ? 
-					EP_RAN_SCHED_SLICE_TYPE :
-					EP_RAN_SCHED_USER_TYPE,
-				ten,
-				&par);
-		}
-		break;
-	/* A set of parameter status */
-	case EP_OPERATION_SET:
-		if (a->ops->ran.sched_set_parameter) {
-			epp_single_ran_sch_set(
-				job->args, job->size, &id, &ten, &par);
-
-			a->ops->ran.sched_set_parameter(
-				mod,
-				id,
-				ten == 0 ?
-					EP_RAN_SCHED_SLICE_TYPE :
-					EP_RAN_SCHED_USER_TYPE,
-				ten,
-				&par);
-		}
-		break;
 		break;
 	}
 
@@ -581,9 +522,6 @@ em_sched_perform_job(
 		break;
 	case JOB_TYPE_RAN_USER:
 		s = em_sched_perform_ran_user(a, job);
-		break;
-	case JOB_TYPE_RAN_SCHEDULER:
-		s = em_sched_perform_ran_scheduler(a, job);
 		break;
 	default:
 		EMDBG(a, "Unknown job cannot be performed, type=%d", job->type);

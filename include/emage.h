@@ -55,11 +55,11 @@ struct em_RAN_ops {
 	int (* user_add) (uint32_t mod, uint16_t rnti, uint64_t slice);
 
 	/* Informs the wrapper that the controller requested to remove an
-	 * existing user association with a slice.
+	 * existing user association within a slice.
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* user_rem) (uint32_t mod, uint16_t rnti);
+	int (* user_rem) (uint32_t mod, uint16_t rnti, uint64_t slice);
 
 	/* Informs the wrapper that the controller requested to report the
 	 * current status of a specific slice.
@@ -74,7 +74,8 @@ struct em_RAN_ops {
 	 *
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
-	int (* slice_add) (uint32_t mod, uint64_t slice, uint32_t sched);
+	int (* slice_add) (
+		uint32_t mod, uint64_t slice, ep_ran_slice_det * det);
 
 	/* Informs the wrapper that the controller requested to remove an 
 	 * existing slice from RAN subsystem.
@@ -82,30 +83,6 @@ struct em_RAN_ops {
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
 	int (* slice_rem) (uint32_t mod, uint64_t slice);
-
-	/* Informs the wrapper that the controller requested to retrieve a
-	 * parameter of a specific scheduler within RAN subsystems.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* sched_get_parameter) (
-		uint32_t            mod,
-		uint32_t            id,
-		uint8_t             type,
-		uint64_t            slice,
-		ep_ran_sparam_det * param);
-
-	/* Informs the wrapper that the controller requested to set a
-	 * parameter for a specific scheduler within RAN subsystems.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* sched_set_parameter) (
-		uint32_t            mod,
-		uint32_t            id,
-		uint8_t             type,
-		uint64_t            slice,
-		ep_ran_sparam_det * param);
 };
 
 /* Defines the operations that can be customized depending on the technology
@@ -210,8 +187,8 @@ struct em_agent_ops {
 	 */
 	int (* mac_report) (uint32_t mod, int32_t interval, int trig_id);
 
-	/* Bunch of Radio Access Network operations that allows to customize the
-	 * slicing within the wrapper logic.
+	/* Radio Access Network operations that allows to customize the slicing
+	 * within the wrapper logic.
 	 */
 	struct em_RAN_ops ran;
 };
@@ -223,6 +200,12 @@ struct em_agent_ops {
  * Returns 1 if the trigger is enabled, 0 otherwise.
  */
 int em_has_trigger(uint64_t enb_id, int tid);
+
+/* Peek the triggers of the given agent and remove a well identified one.
+ *
+ * Returns 0 if the trigger has been removed, a negative error code otherwise.
+ */
+int em_del_trigger(uint64_t enb_id, int tid);
 
 /* Check if the agent is currently connected to a controller.
  *

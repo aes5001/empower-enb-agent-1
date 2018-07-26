@@ -80,8 +80,12 @@ struct trigger * em_tr_add(
 	char *              req,
 	unsigned char       size);
 
-/* Find, remove and free a trigger */
-INTERNAL int em_tr_del(struct tr_context * tc, int mod, int type, int instance);
+/* Find, remove and free a trigger using its ID */
+INTERNAL int em_tr_del(struct tr_context * tc, int id);
+
+/* Find, remove and free a trigger using type ond instance */
+INTERNAL int em_tr_del_ext(
+	struct tr_context * tc, int mod, int type, int instance);
 
 /* Find an trigger with given id */
 INTERNAL struct trigger * em_tr_find(struct tr_context * tc, int id);

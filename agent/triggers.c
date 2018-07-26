@@ -104,7 +104,44 @@ em_tr_add(
 /* Delete a trigger with given characteristics from the context */
 INTERNAL
 int
-em_tr_del(struct tr_context * tc, int mod, int type, int instance)
+em_tr_del(struct tr_context * tc, int id)
+{
+#ifdef EBUG
+	struct agent *   a = container_of(tc, struct agent, trig);
+#endif
+	struct trigger * t = 0;
+	struct trigger * u = 0;
+
+/****** Start of the critical section *****************************************/
+	trig_lock_ctx(tc);
+
+	list_for_each_entry_safe(t, u, &tc->ts, next) {
+		if(t->id == id) {
+			list_del(&t->next);
+			trig_unlock_ctx(tc);
+
+			EMDBG(a, "Removing trigger %d, type=%d, mod=%d\n",
+				t->id, t->type, t->mod);
+
+			em_tr_free(t);
+
+			return 0;
+		}
+	}
+
+	trig_unlock_ctx(tc);
+/****** End of the critical section *******************************************/
+
+	EMDBG(a, "Trigger doesn't exists, id=%d, type=%d, mod=%d \n",
+		t->id, t->type, t->mod);
+
+	return -1;
+}
+
+/* Delete a trigger with given characteristics from the context */
+INTERNAL
+int
+em_tr_del_ext(struct tr_context * tc, int mod, int type, int instance)
 {
 #ifdef EBUG
 	struct agent *   a = container_of(tc, struct agent, trig);
@@ -125,10 +162,6 @@ em_tr_del(struct tr_context * tc, int mod, int type, int instance)
 
 			EMDBG(a, "Removing trigger %d, type=%d, mod=%d\n",
 				t->id, t->type, t->mod);
-
-			if(t->req) {
-				free(t->req);
-			}
 
 			em_tr_free(t);
 
@@ -242,6 +275,7 @@ em_tr_free(struct trigger * t)
 	if(t) {
 		if(t->req) {
 			free(t->req);
+			t->req = 0;
 		}
 
 		free(t);

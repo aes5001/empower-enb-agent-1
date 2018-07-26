@@ -207,6 +207,32 @@ em_has_trigger(uint64_t enb_id, int tid)
 	return t ? 1 : 0;
 }
 
+/* Returns [0/1] depending if a trigger with a certain ID has been removed by
+ * the subsystem of the desired agent.
+ */
+EMAGE_API
+int
+em_del_trigger(uint64_t enb_id, int tid)
+{
+	struct agent *   a = 0;
+	struct trigger * t = 0;
+
+/****** Start of the critical section *****************************************/
+	em_lock_agents;
+
+	list_for_each_entry(a, &em_agents, next) {
+		if(a->enb_id == enb_id) {
+			em_tr_del(&a->trig, tid);
+			break;
+		}
+	}
+
+	em_unlock_agents;
+/****** End of the critical section *******************************************/
+
+	return t ? 1 : 0;
+}
+
 /* Returns [true/false] depending on the state of the agent network context */
 EMAGE_API
 int

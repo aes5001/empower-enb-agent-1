@@ -40,7 +40,6 @@ enum JOB_TYPES {
 	JOB_TYPE_RAN_SETUP,
 	JOB_TYPE_RAN_SLICE,
 	JOB_TYPE_RAN_USER,
-	JOB_TYPE_RAN_SCHEDULER,
 };
 
 /* Job for agent scheduler */

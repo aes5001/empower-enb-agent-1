@@ -436,21 +436,6 @@ em_net_se_ranu(struct net_context * net, char * msg, int size)
         return em_net_sched_job(a, seq, JOB_TYPE_RAN_USER, 1, 0, msg, size);
 }
 
-/* Handle a single event RAN Scheduler */
-INTERNAL
-int
-em_net_se_ranc(struct net_context * net, char * msg, int size)
-{
-        uint32_t       seq;
-        struct agent * a = container_of(net, struct agent, net);
-
-        seq = epp_seq(msg, size);
-
-        EMDBG(a, "Network processing RAN Scheduler, seq=%u\n", seq);
-
-        return em_net_sched_job(a, seq, JOB_TYPE_RAN_SCHEDULER, 1, 0, msg, size);
-}
-
 /* Handle a trigger event RAN Measurement message */
 INTERNAL
 int
@@ -484,7 +469,7 @@ em_net_te_ue_measure(struct net_context * net, char * msg, int size)
 			msg,
 			size);
 	} else {
-		return em_tr_del(&a->trig, mod, TR_TYPE_UE_MEAS, (int)m_id);
+		return em_tr_del_ext(&a->trig, mod, TR_TYPE_UE_MEAS, (int)m_id);
 	}
 
 	return em_net_sched_job(
@@ -520,7 +505,7 @@ em_net_te_ue_report(struct net_context * net, char * msg, int size)
 			msg,
 			size);
 	} else {
-		return em_tr_del(&a->trig, mod, TR_TYPE_UE_REP, 0);
+		return em_tr_del_ext(&a->trig, mod, TR_TYPE_UE_REP, 0);
 	}
 
 	return em_net_sched_job(
@@ -556,7 +541,7 @@ em_net_te_mac_report(struct net_context * net, char * msg, int size)
 			msg,
 			size);
 	} else {
-		return em_tr_del(&a->trig, mod, TR_TYPE_MAC_REP, 0);
+		return em_tr_del_ext(&a->trig, mod, TR_TYPE_MAC_REP, 0);
 	}
 
 	return em_net_sched_job(
@@ -646,11 +631,6 @@ em_net_process_single_event(
         case EP_ACT_RAN_USER:
                 if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
                         return em_net_se_ranu(net, msg, size);
-                }
-                break;
-        case EP_ACT_RAN_SCHED:
-                if (epp_dir(msg, size) == EP_HDR_FLAG_DIR_REQ) {
-                        return em_net_se_ranc(net, msg, size);
                 }
                 break;
 	default:
