@@ -55,6 +55,24 @@
  * Utilities                                                                  *
  ******************************************************************************/
 
+/* Fill RAN configuration structure with correct values arrived from the network
+ */
+INTERNAL
+void
+em_sched_to_RANconf(ep_ran_slice_det * det, em_RAN_conf * conf)
+{
+	int i;
+
+	conf->l2.user_sched = det->l2.usched;
+	conf->l2.rbg        = det->l2.rbgs;
+
+	for(i = 0; i < EP_RAN_USERS_MAX; i++) {
+		conf->users[i] = det->users[i];	
+	}
+
+	conf->nof_users = det->nof_users;
+}
+
 /* Fix the last details and send the message */
 INTERNAL
 int
@@ -100,7 +118,7 @@ em_sched_perform_cell_setup(struct agent * a, struct sched_job * job)
 	uint32_t mod = 0;
 
 	if(epp_head((char *)job->args, job->size, 0, 0, &pci, &mod, 0)) {
-		return 0;
+		return JOB_CONSUMED;
 	}
 
 	EMDBG(a, "Performing a cell Capability job\n");
@@ -120,8 +138,7 @@ em_sched_perform_enb_setup(struct agent * a, struct sched_job * job)
 	uint32_t mod = 0;
 
 	if(epp_head((char *)job->args, job->size, 0, 0, 0, &mod, 0)) {
-		EMLOG(a, "Cannot parse cell id in Cell setup\n");
-		return 0;
+		return JOB_CONSUMED;
 	}
 
 	EMDBG(a, "Performing an eNB Capability job\n");
@@ -146,12 +163,12 @@ em_sched_perform_ho(struct agent * a, struct sched_job * job)
 	uint8_t  cause = 0;
 
 	if(epp_head((char *)job->args, job->size, 0, 0, &scell, &mod, 0)) {
-		return 0;
+		return JOB_CONSUMED;
 	}
 
 	if(epp_single_ho_req(
 		(char *)job->args, job->size, &rnti, &tenb, &tcell, &cause)) {
-		return 0;
+		return JOB_CONSUMED;
 	}
 
 	EMDBG(a, "Performing a Handover job\n");
@@ -184,7 +201,7 @@ em_sched_perform_ue_measure(struct agent * a, struct sched_job * job)
 		t = em_tr_find(&a->trig, t->id);
 
 		if(t) {
-			epp_trigger_uemeas_req(
+			if(epp_trigger_uemeas_req(
 				t->req,
 				t->size,
 				&mid,
@@ -192,7 +209,10 @@ em_sched_perform_ue_measure(struct agent * a, struct sched_job * job)
 				&freq,
 				&intv,
 				&max_c,
-				&max_m);
+				&max_m))
+			{
+				return JOB_CONSUMED;
+			}
 
 			a->ops->ue_measure(
 				t->mod,
@@ -224,7 +244,9 @@ em_sched_perform_mac_report(struct agent * a, struct sched_job * job)
 		t = em_tr_find(&a->trig, t->id);
 
 		if(t) {
-			epp_trigger_macrep_req(t->req, t->size, &intv);
+			if(epp_trigger_macrep_req(t->req, t->size, &intv)) {
+				return JOB_CONSUMED;
+			}
 
 			a->ops->mac_report(t->mod, intv, t->id);
 		}
@@ -288,57 +310,6 @@ em_sched_perform_ran_setup(struct agent * a, struct sched_job * job)
 	return JOB_CONSUMED;
 }
 
-/* Execute a RAN User job  */
-INTERNAL
-int
-em_sched_perform_ran_user(struct agent * a, struct sched_job * job)
-{
-	ep_msg_type     type = 0;
-	ep_act_type     act  = 0;
-	ep_op_type      op   = 0;
-	uint32_t        mod  = 0;
-
-	ep_ran_user_det udet;
-
-	/* If no operations are there, don't perform any other operation */
-	if (!a->ops) {
-		return JOB_CONSUMED;
-	}
-
-	epp_head(job->args, job->size, &type, 0, 0, &mod, 0);
-	act = epp_single_type(job->args, job->size);
-	op  = epp_single_op(job->args, job->size);
-
-	EMDBG(a, "Performing a RAN User job\n");
-
-	/* Depending on the operation requested, call the correct callback */
-	switch (op) {
-	/* A request */
-	case EP_OPERATION_UNSPECIFIED:
-		if (a->ops->ran.user_request) {
-			epp_single_ran_usr_req(job->args, job->size, &udet.id);
-			a->ops->ran.user_request(mod, udet.id);
-		}
-		break;
-	/* An addition */
-	case EP_OPERATION_ADD:
-		if (a->ops->ran.user_add) {
-			epp_single_ran_usr_add(job->args, job->size, &udet);
-			a->ops->ran.user_add(mod, udet.id, udet.slice);
-		}
-		break;
-	/* A remove */
-	case EP_OPERATION_REM:
-		if (a->ops->ran.user_rem) {
-			epp_single_ran_usr_rem(job->args, job->size, &udet);
-			a->ops->ran.user_rem(mod, udet.id, udet.slice);
-		}
-		break;
-	}
-
-	return JOB_CONSUMED;
-}
-
 /* Execute a RAN slice job */
 INTERNAL
 int
@@ -350,7 +321,8 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 	uint32_t          mod  = 0;
 
 	uint64_t         id;
-	ep_ran_slice_det tdet;
+	ep_ran_slice_det sdet;
+	em_RAN_conf      conf;
 
 	/* If no operations are there, dont perform any other job. */
 	if (!a->ops) {
@@ -368,27 +340,51 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 		/* A request */
 	case EP_OPERATION_UNSPECIFIED:
 		if (a->ops->ran.slice_request) {
-			epp_single_ran_slice_req(job->args, job->size, &id);
+			if(epp_single_ran_slice_req(job->args, job->size, &id)) 
+			{
+				break;
+			}
+
 			a->ops->ran.slice_request(mod, id);
 		}
 		break;
 	/* An addition */
 	case EP_OPERATION_ADD:
 		if (a->ops->ran.slice_add) {
-			epp_single_ran_slice_add(
+			if(epp_single_ran_slice_add(
 				job->args, 
 				job->size, 
 				&id,
-				&tdet);
+				&sdet))
+			{
+				break;
+			}
 				
-			a->ops->ran.slice_add(mod, id, &tdet);
+			em_sched_to_RANconf(&sdet, &conf);
+			a->ops->ran.slice_add(mod, id, &conf);
 		}
 		break;
 	/* A remove */
 	case EP_OPERATION_REM:
 		if (a->ops->ran.slice_rem) {
-			epp_single_ran_slice_rem(job->args, job->size, &id);
+			if(epp_single_ran_slice_rem(job->args, job->size, &id)) 
+			{
+				break;
+			}
+
 			a->ops->ran.slice_rem(mod, id);
+		}
+		break;
+	case EP_OPERATION_SET:
+		if (a->ops->ran.slice_conf) {
+			if(epp_single_ran_slice_set(
+				job->args, job->size, &id, &sdet)) 
+			{
+				break;
+			}
+
+			em_sched_to_RANconf(&sdet, &conf);
+			a->ops->ran.slice_conf(mod, id, &conf);
 		}
 		break;
 	}
@@ -519,9 +515,6 @@ em_sched_perform_job(
 		break;
 	case JOB_TYPE_RAN_SLICE:
 		s = em_sched_perform_ran_slice(a, job);
-		break;
-	case JOB_TYPE_RAN_USER:
-		s = em_sched_perform_ran_user(a, job);
 		break;
 	default:
 		EMDBG(a, "Unknown job cannot be performed, type=%d", job->type);

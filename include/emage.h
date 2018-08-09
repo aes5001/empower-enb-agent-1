@@ -30,7 +30,28 @@ extern "C"
 #include <emage/emproto.h>
 
 /*
- *Radio Access Network(RAN) sharing related procedures:
+ * Layer 2 RAN sharing configuration 
+ */
+typedef struct em_RAN_l2_configuration {
+	/* User scheduler requested */
+	int user_sched;
+	/* RBGs associated with the slice */
+	int rbg;
+} em_RAN_l2_conf;
+
+/*
+ * RAN sharing configuration for a specific slice
+ */
+typedef struct em_RAN_configuration {
+	int            nof_users;
+	/* Array of users of the slice */
+	uint16_t       users[EP_RAN_USERS_MAX];
+	/* Layer 2 configuration */
+	em_RAN_l2_conf l2;
+} em_RAN_conf;
+
+/*
+ * Radio Access Network(RAN) sharing related procedures:
  */
 struct em_RAN_ops {
 	/* Informs the wrapper that the controller requested to report the 
@@ -39,27 +60,6 @@ struct em_RAN_ops {
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
 	int (* setup_request) (uint32_t mod);
-
-	/* Informs the wrapper that the controller requested to report the 
-	 * status of a specific RAN user.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* user_request) (uint32_t mod, uint16_t rnti);
-
-	/* Informs the wrapper that the controller requested to add a new
-	 * user-slice association.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* user_add) (uint32_t mod, uint16_t rnti, uint64_t slice);
-
-	/* Informs the wrapper that the controller requested to remove an
-	 * existing user association within a slice.
-	 *
-	 * Returns 0 on success, a negative error code otherwise.
-	 */
-	int (* user_rem) (uint32_t mod, uint16_t rnti, uint64_t slice);
 
 	/* Informs the wrapper that the controller requested to report the
 	 * current status of a specific slice.
@@ -75,7 +75,7 @@ struct em_RAN_ops {
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
 	int (* slice_add) (
-		uint32_t mod, uint64_t slice, ep_ran_slice_det * det);
+		uint32_t mod, uint64_t slice, em_RAN_conf * det);
 
 	/* Informs the wrapper that the controller requested to remove an 
 	 * existing slice from RAN subsystem.
@@ -83,6 +83,13 @@ struct em_RAN_ops {
 	 * Returns 0 on success, a negative error code otherwise.
 	 */
 	int (* slice_rem) (uint32_t mod, uint64_t slice);
+
+	/* Informs the wrapper that the controller requested to configure a 
+	 * slice in a specific way.
+	 *
+	 * Returns 0 on success, a negative error code otherwise.
+	 */
+	int (* slice_conf) (uint32_t mod, uint64_t slice, em_RAN_conf * conf);
 };
 
 /* Defines the operations that can be customized depending on the technology
