@@ -54,7 +54,7 @@
 /******************************************************************************
  * Utilities                                                                  *
  ******************************************************************************/
-
+#include <stdio.h>
 /* Fill RAN configuration structure with correct values arrived from the network
  */
 INTERNAL
@@ -66,7 +66,7 @@ em_sched_to_RANconf(ep_ran_slice_det * det, em_RAN_conf * conf)
 	conf->l2.user_sched = det->l2.usched;
 	conf->l2.rbg        = det->l2.rbgs;
 
-	for(i = 0; i < EP_RAN_USERS_MAX; i++) {
+	for(i = 0; i < det->nof_users && i < EP_RAN_USERS_MAX; i++) {
 		conf->users[i] = det->users[i];	
 	}
 
@@ -320,9 +320,9 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 	ep_op_type        op   = 0;
 	uint32_t          mod  = 0;
 
-	uint64_t         id;
-	ep_ran_slice_det sdet;
-	em_RAN_conf      conf;
+	uint64_t         id    = 0;
+	ep_ran_slice_det sdet  = {0};
+	em_RAN_conf      conf  = {0};
 
 	/* If no operations are there, dont perform any other job. */
 	if (!a->ops) {
@@ -383,7 +383,7 @@ em_sched_perform_ran_slice(struct agent * a, struct sched_job * job)
 				break;
 			}
 
-			em_sched_to_RANconf(&sdet, &conf);
+			em_sched_to_RANconf(&sdet, &conf);		
 			a->ops->ran.slice_conf(mod, id, &conf);
 		}
 		break;
